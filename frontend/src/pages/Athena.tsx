@@ -1,0 +1,542 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
+import { Editor, type OnMount } from '@monaco-editor/react'
+
+import ChatPanel from '@/components/ChatPanel'
+import {
+  getProjectTree,
+  getFile,
+  saveFile,
+  generateAthenaPaper,
+  regenerateAthenaPaper,
+  compileAthenaPaper,
+  type AthenaMeta,
+  type TreeNode,
+  type FileRecord,
+} from '@/lib/api'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
+
+const PAPER_PATH = 'Final Paper/paper.tex'
+const META_PATH = 'Final Paper/athena_meta.txt'
+const EDITABLE: Array<FileRecord['type']> = ['tex']
+
+function debug(...args: any[]) {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log('[athena]', ...args)
+  }
+}
+
+function findFileIdByPath(nodes: TreeNode[] | undefined, targetPath: string): string | undefined {
+  if (!nodes) return undefined
+  const stack: TreeNode[] = [...nodes]
+  while (stack.length) {
+    const n = stack.pop()
+    if (!n) continue
+    if (n.kind === 'file') {
+      if (n.path === targetPath) return n.fileId
+    } else if (n.children && n.children.length) {
+      for (const c of n.children) stack.push(c)
+    }
+  }
+  return undefined
+}
+
+const JOURNALS = [
+  'General',
+  'Nature',
+  'Science',
+  'Cell',
+  'PNAS',
+  'Nature Communications',
+  'IEEE TPAMI',
+  'JMLR',
+  'NeurIPS',
+  'ICML',
+  'ICLR',
+] as const
+
+export default function Athena() {
+  const { projectId = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const autostart = searchParams.get('autostart') === '1'
+
+  const [journal, setJournal] = useState<(typeof JOURNALS)[number]>('General')
+  const [meta, setMeta] = useState<AthenaMeta | null>(null)
+
+  const [editorValue, setEditorValue] = useState<string>('')
+  const [dirty, setDirty] = useState(false)
+  const [file, setFile] = useState<FileRecord | null>(null)
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null)
+  const [isCompiling, setIsCompiling] = useState(false)
+  const saveTimerRef = useRef<number | undefined>(undefined)
+  const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const didAutostartRef = useRef(false)
+  const skipAlertAtRef = useRef<number>(0)
+  const prevViewerUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    debug('mount', { projectId, autostart })
+    return () => debug('unmount', { projectId })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const treeQ = useQuery({
+    queryKey: ['files-tree', projectId],
+    queryFn: () => getProjectTree(projectId),
+    enabled: !!projectId,
+  })
+
+  const paperFileId = useMemo(() => findFileIdByPath(treeQ.data, PAPER_PATH), [treeQ.data])
+  const metaFileId = useMemo(() => findFileIdByPath(treeQ.data, META_PATH), [treeQ.data])
+
+  useEffect(() => {
+    debug('tree', {
+      status: treeQ.status,
+      isLoading: treeQ.isLoading,
+      isFetching: treeQ.isFetching,
+      paperFileId,
+      metaFileId,
+    })
+  }, [metaFileId, paperFileId, treeQ.isFetching, treeQ.isLoading, treeQ.status])
+
+  const fileQ = useQuery({
+    queryKey: ['file', paperFileId],
+    queryFn: () => (paperFileId ? getFile(paperFileId) : Promise.resolve(null)),
+    enabled: !!paperFileId,
+  })
+
+  const metaQ = useQuery({
+    queryKey: ['file', metaFileId],
+    queryFn: () => (metaFileId ? getFile(metaFileId) : Promise.resolve(null)),
+    enabled: !!metaFileId,
+  })
+
+  const saveMut = useMutation({
+    mutationFn: (payload: { id: string; content: string }) => saveFile(payload.id, payload.content),
+    onSuccess: () => setSaving('saved'),
+    onError: () => setSaving('idle'),
+  })
+
+  const generateMut = useMutation({
+    mutationFn: () => generateAthenaPaper(projectId),
+    onMutate: () => {
+      debug('generate.onMutate', { projectId })
+    },
+    onSuccess: (res) => {
+      debug('generate.onSuccess', { projectId, meta: res.meta })
+      setMeta({
+        ...res.meta,
+        // hard enforce top-3
+        suggestedJournals: (res.meta.suggestedJournals || []).slice(0, 3),
+      })
+      if (res.meta?.selectedJournal) {
+        // keep dropdown constrained to our known options; otherwise ignore
+        if ((JOURNALS as readonly string[]).includes(res.meta.selectedJournal)) {
+          setJournal(res.meta.selectedJournal as any)
+        }
+      }
+      // refresh local reads
+      treeQ.refetch().catch(() => {})
+      fileQ.refetch().catch(() => {})
+      metaQ.refetch().catch(() => {})
+    },
+    onError: (err) => {
+      debug('generate.onError', { projectId, err: String((err as any)?.message || err) })
+    },
+    onSettled: () => {
+      debug('generate.onSettled', { projectId })
+    },
+  })
+
+  const regenerateMut = useMutation({
+    mutationFn: (j: string) => regenerateAthenaPaper(projectId, j),
+    onMutate: (j) => {
+      debug('regenerate.onMutate', { projectId, journal: j })
+    },
+    onSuccess: (res) => {
+      debug('regenerate.onSuccess', { projectId, meta: res.meta })
+      setMeta({
+        ...res.meta,
+        suggestedJournals: (res.meta.suggestedJournals || []).slice(0, 3),
+      })
+      treeQ.refetch().catch(() => {})
+      fileQ.refetch().catch(() => {})
+      metaQ.refetch().catch(() => {})
+    },
+    onError: (err) => {
+      debug('regenerate.onError', { projectId, err: String((err as any)?.message || err) })
+    },
+    onSettled: () => {
+      debug('regenerate.onSettled', { projectId })
+    },
+  })
+
+  useEffect(() => {
+    debug('mutationFlags', {
+      generatePending: generateMut.isPending,
+      regeneratePending: regenerateMut.isPending,
+      saving,
+      dirty,
+    })
+  }, [dirty, generateMut.isPending, regenerateMut.isPending, saving])
+
+  const isEditable = useMemo(() => (file ? EDITABLE.includes(file.type) : false), [file])
+
+  useEffect(() => {
+    if (!fileQ.data) {
+      setFile(null)
+      setEditorValue('')
+      setDirty(false)
+      setSaving('idle')
+      return
+    }
+    setFile(fileQ.data)
+    setEditorValue(fileQ.data.content ?? '')
+    setDirty(false)
+    setSaving('idle')
+  }, [fileQ.data])
+
+  const flushSave = useCallback(async () => {
+    if (!file || !isEditable || !dirty) return
+    const content = editorValue ?? ''
+    setSaving('saving')
+    await saveMut.mutateAsync({ id: file.id, content })
+    setDirty(false)
+  }, [dirty, editorValue, file, isEditable, saveMut])
+
+  // Revoke old blob URLs to avoid leaks
+  useEffect(() => {
+    const prev = prevViewerUrlRef.current
+    if (prev && prev !== viewerUrl) {
+      try {
+        URL.revokeObjectURL(prev)
+      } catch {
+        // ignore
+      }
+    }
+    prevViewerUrlRef.current = viewerUrl
+  }, [viewerUrl])
+
+  useEffect(() => {
+    return () => {
+      const prev = prevViewerUrlRef.current
+      if (prev) {
+        try {
+          URL.revokeObjectURL(prev)
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [])
+
+  const ensureSavedBeforeRegenerate = useCallback(async () => {
+    // cancel any pending debounced save and flush immediately
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = undefined
+    }
+    if (!file || !isEditable) return
+    if (!dirty) return
+    debug('ensureSavedBeforeRegenerate: flushing save', { projectId, fileId: file.id })
+    await flushSave()
+  }, [dirty, file, flushSave, isEditable])
+
+  const ensureSavedBeforeChat = useCallback(async () => {
+    // same rule as regenerate: persist local edits before calling LLM
+    await ensureSavedBeforeRegenerate()
+  }, [ensureSavedBeforeRegenerate])
+
+  const scheduleSave = useCallback(() => {
+    if (!isEditable) return
+    setDirty(true)
+    setSaving('idle')
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      void flushSave()
+    }, 1000)
+  }, [flushSave, isEditable])
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+    }
+  }, [])
+
+  // Load meta from persisted file if present
+  useEffect(() => {
+    const content = metaQ.data?.content
+    if (!content || typeof content !== 'string') return
+    try {
+      const parsed = JSON.parse(content) as AthenaMeta
+      if (parsed && typeof parsed === 'object') {
+        debug('meta.loadedFromFile', { projectId, parsed })
+        setMeta({
+          ...parsed,
+          suggestedJournals: (parsed.suggestedJournals || []).slice(0, 3),
+        })
+      }
+    } catch {
+      debug('meta.parseFailed', { projectId })
+      // ignore parsing errors (meta remains null)
+    }
+  }, [metaQ.data?.content])
+
+  // Apply server-driven file updates safely (never overwrite local edits)
+  const handleFileUpdate = useCallback(
+    (ev: { path: string; op: 'append' | 'replace'; content: string }) => {
+      if (ev.path === PAPER_PATH) {
+        // If user has local edits, do not overwrite; alert once (rate-limited)
+        if (dirty) {
+          const now = Date.now()
+          if (now - skipAlertAtRef.current > 1500) {
+            skipAlertAtRef.current = now
+            window.alert(
+              'Assistant updated the paper, but you have unsaved local edits. Please save (Ctrl/Cmd+S) or wait for autosave, then resend/retry to apply updates.',
+            )
+          }
+          return
+        }
+        // prevent queued save from firing
+        if (saveTimerRef.current) {
+          window.clearTimeout(saveTimerRef.current)
+          saveTimerRef.current = undefined
+        }
+        if (ev.op === 'replace') setEditorValue(ev.content)
+        else setEditorValue((prev) => (prev ?? '') + ev.content)
+        setDirty(false)
+        setSaving('idle')
+        return
+      }
+
+      if (ev.path === META_PATH) {
+        // Update meta live, but do NOT change suggested journals due to chat edits.
+        try {
+          const parsed = JSON.parse(ev.content) as AthenaMeta
+          setMeta((prev) => {
+            const keepSuggested = prev?.suggestedJournals
+            return {
+              ...parsed,
+              suggestedJournals: keepSuggested && keepSuggested.length > 0 ? keepSuggested.slice(0, 3) : (parsed.suggestedJournals || []).slice(0, 3),
+            }
+          })
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [dirty],
+  )
+
+  const compilePdf = useCallback(async () => {
+    try {
+      if (!projectId) return
+      debug('compile.click', { projectId, dirty, saving })
+      // Save local edits before compiling to ensure backend compiles the latest LaTeX.
+      await ensureSavedBeforeRegenerate()
+      debug('compile.afterSave', { projectId, dirty: false })
+      setIsCompiling(true)
+      const t0 = performance.now()
+      const blob = await compileAthenaPaper(projectId)
+      const ms = Math.round(performance.now() - t0)
+      debug('compile.response', { projectId, ms, sizeBytes: blob.size, type: blob.type })
+      const url = URL.createObjectURL(blob)
+      setViewerUrl(url)
+      debug('compile.viewerUrl.set', { projectId })
+    } catch (err: unknown) {
+      window.alert(`Failed to compile LaTeX: ${String((err as any)?.message || err)}`)
+    } finally {
+      setIsCompiling(false)
+    }
+  }, [ensureSavedBeforeRegenerate, projectId])
+
+  // Step 2: autostart generation when arriving from Forge with ?autostart=1
+  useEffect(() => {
+    if (!autostart) return
+    if (!projectId) return
+    if (didAutostartRef.current) return
+    didAutostartRef.current = true
+    debug('autostart.trigger', { projectId })
+    generateMut.mutate()
+  }, [autostart, generateMut, projectId])
+
+  const onMount: OnMount = (editor, monaco) => {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      void flushSave()
+    })
+  }
+
+  const headerRight = (
+    <div className="flex items-center gap-2">
+      {saving === 'saving' ? (
+        <span className="text-xs text-muted-foreground">Saving…</span>
+      ) : saving === 'saved' ? (
+        <span className="text-xs text-muted-foreground">Saved</span>
+      ) : null}
+    </div>
+  )
+
+  const isLoading = treeQ.isLoading || fileQ.isLoading
+
+  return (
+    <main className="flex h-dvh w-full min-w-0 flex-col overflow-hidden">
+      <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
+        <div className="min-w-0">
+          <h1 className="text-sm font-medium truncate">Athena — {projectId}</h1>
+          <p className="text-xs text-muted-foreground truncate">{PAPER_PATH}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary">Paper</Badge>
+        </div>
+      </header>
+
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <PanelGroup direction="horizontal" className="h-full w-full min-w-0 overflow-hidden">
+          {/* Left: LaTeX editor */}
+          <Panel defaultSize={33} minSize={20} className="min-w-0">
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b px-4 py-2">
+                <p className="text-xs font-medium">LaTeX</p>
+                <div className="flex items-center gap-2">
+                  {headerRight}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void compilePdf()}
+                    disabled={isCompiling}
+                  >
+                    {isCompiling ? 'Compiling…' : 'Compile LaTeX'}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0">
+                {isLoading ? (
+                  <div className="p-4">
+                    <Skeleton className="h-6 w-1/3" />
+                    <Skeleton className="mt-3 h-72 w-full" />
+                  </div>
+                ) : file ? (
+                  <Editor
+                    height="100%"
+                    language="markdown"
+                    theme="vs-dark"
+                    value={editorValue}
+                    onMount={onMount}
+                    onChange={(v) => {
+                      setEditorValue(v ?? '')
+                      scheduleSave()
+                    }}
+                    options={{
+                      fontSize: 14,
+                      minimap: { enabled: false },
+                      wordWrap: 'on',
+                      automaticLayout: true,
+                    }}
+                  />
+                ) : (
+                  <div className="p-4 text-sm text-muted-foreground">
+                    Couldn&apos;t find <code className="rounded bg-muted px-1 py-0.5">{PAPER_PATH}</code> in this project.
+                  </div>
+                )}
+              </div>
+            </div>
+          </Panel>
+
+          <PanelResizeHandle className="bg-border w-px" />
+
+          {/* Middle: Placeholder PDF preview + journal dropdown */}
+          <Panel defaultSize={34} minSize={20} className="min-w-0">
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
+                <p className="text-xs font-medium">Preview</p>
+                <div className="flex items-center gap-2">
+                  {meta ? (
+                    <Badge variant="secondary">
+                      Publish probability: {Math.round((meta.publicationProbability || 0) * 100)}%
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">Publish: —</Badge>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline">
+                        Journal: {journal}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {JOURNALS.map((j) => (
+                        <DropdownMenuItem
+                          key={j}
+                          onClick={async () => {
+                            debug('journal.select.click', {
+                              selected: j,
+                              disabled: regenerateMut.isPending || generateMut.isPending,
+                            })
+                            setJournal(j)
+                            // Per your rule: if user edited latex locally, save it to DB first.
+                            await ensureSavedBeforeRegenerate()
+                            // Then call regenerate.
+                            await regenerateMut.mutateAsync(j)
+                          }}
+                          disabled={regenerateMut.isPending || generateMut.isPending}
+                        >
+                          {j}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 p-4">
+                {meta?.suggestedJournals && meta.suggestedJournals.length > 0 ? (
+                  <div className="mb-3 text-xs text-muted-foreground">
+                    Suggested journals: {meta.suggestedJournals.slice(0, 3).join(', ')}
+                  </div>
+                ) : (
+                  <div className="mb-3 text-xs text-muted-foreground">Suggested journals: —</div>
+                )}
+                {viewerUrl ? (
+                  <iframe src={viewerUrl} className="h-full w-full rounded-lg border bg-muted/20" />
+                ) : (
+                  <div className="h-full w-full rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                    {generateMut.isPending
+                      ? 'Generating paper…'
+                      : regenerateMut.isPending
+                        ? 'Regenerating paper…'
+                        : 'Click “Compile LaTeX” to generate a PDF preview.'}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Panel>
+
+          <PanelResizeHandle className="bg-border w-px" />
+
+          {/* Right: Chat */}
+          <Panel defaultSize={33} minSize={20} className="min-w-0">
+            <ChatPanel
+              projectId={projectId}
+              showActions={false}
+              endpoint="paper"
+              beforeSend={ensureSavedBeforeChat}
+              onFileUpdate={handleFileUpdate}
+            />
+          </Panel>
+        </PanelGroup>
+      </div>
+    </main>
+  )
+}
+
+

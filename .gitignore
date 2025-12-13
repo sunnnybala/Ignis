@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+coverage/
+.DS_Store
+*.local
+.turbo/
+.vercel/
+frontend/node_modules/
+backend/node_modules/
+venv/
+data/
+
