@@ -481,7 +481,6 @@ export default function Athena() {
                           onClick={async () => {
                             debug('journal.select.click', {
                               selected: j,
-                              disabled: regenerateMut.isPending || generateMut.isPending,
                             })
                             setJournal(j)
                             // Per your rule: if user edited latex locally, save it to DB first.
@@ -489,7 +488,7 @@ export default function Athena() {
                             // Then call regenerate.
                             await regenerateMut.mutateAsync(j)
                           }}
-                          disabled={regenerateMut.isPending || generateMut.isPending}
+                          // disabled={regenerateMut.isPending || generateMut.isPending}
                         >
                           {j}
                         </DropdownMenuItem>
