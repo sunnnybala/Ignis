@@ -121,7 +121,7 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 				Title — Source/Link — 1–2 sentence abstract  
 				Include 5–8 items.
 			  • 'Lit Review/review.md' — replace or append  
-				Provide a clear synthesis of prior work and highlight novelty gaps.
+				Provide a clear synthesis of prior work, what isnt novel, and highlight novelty gaps.
 			- After writing, propose_next_phase back to refine with a brief rationale.
 			
 			MASTER 1 LOOP EXIT RULE

@@ -16,6 +16,7 @@ import {
 import { SidebarHeaderBrand } from '@/components/SidebarHeaderBrand'
 import { SidebarUserFooter } from '@/components/SidebarUserFooter'
 import { ChevronRight, File, FileCode, FileText, Image, Folder, FolderOpen } from 'lucide-react'
+import { getDevUser } from '@/lib/devUser'
 
 function fileIcon(type?: string) {
   switch (type) {
@@ -70,7 +71,7 @@ export default function ForgeSidebar({
     })
   }
 
-  const user = { name: 'Dev User', email: 'dev@ignis.local', avatarUrl: '' }
+  const user = getDevUser()
 
   // Listen for refresh signal after job completion
   useEffect(() => {

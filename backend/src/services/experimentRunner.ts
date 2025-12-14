@@ -170,13 +170,14 @@ export async function runExperimentJob(jobId: string): Promise<void> {
 				// eslint-disable-next-line no-console
 				console.log('[runner] found artifact', { jobId, name: entry.name });
 			}
+			// Only persist known artifacts img/csv for MVP; skip others BEFORE reading (pt checkpoints can be huge).
+			const { type, mime } = detectMime(entry.name);
+			if (type === 'other') continue;
+
 			const full = path.join(tempDir, entry.name);
 			const buf = await fs.readFile(full);
 			const size = buf.byteLength;
 			const hash = await sha256(buf);
-			const { type, mime } = detectMime(entry.name);
-			// Only persist known artifacts img/csv for MVP; others skipped
-			if (type === 'other') continue;
 			const storageKey = `projects/${job.projectId}/results/${jobId}/${entry.name}`;
 			try {
 				await putObject(storageKey, buf, mime, true);
@@ -208,6 +209,10 @@ export async function runExperimentJob(jobId: string): Promise<void> {
 			.update(jobs)
 			.set({ status: code === 0 ? 'completed' : 'failed', endedAt: new Date(), output: stdout + '\n' + stderr })
 			.where(eq(jobs.id, jobId));
+		if (process.env.NODE_ENV === 'development') {
+			// eslint-disable-next-line no-console
+			console.log('[runner] job finished', { jobId, status: code === 0 ? 'completed' : 'failed' });
+		}
 	} catch (err: any) {
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console

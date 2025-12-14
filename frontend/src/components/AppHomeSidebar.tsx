@@ -3,6 +3,7 @@ import { BarChart3, Folder } from 'lucide-react'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { SidebarHeaderBrand } from '@/components/SidebarHeaderBrand'
 import { SidebarUserFooter } from '@/components/SidebarUserFooter'
+import { getDevUser } from '@/lib/devUser'
 
 const menu = [
   { title: 'Projects', to: '/home/projects', icon: Folder },
@@ -10,11 +11,7 @@ const menu = [
 ]
 
 export function AppHomeSidebar() {
-  const user = {
-    name: 'Dev User',
-    email: 'dev@ignis.local',
-    avatarUrl: '',
-  }
+  const user = getDevUser()
 
   return (
     <Sidebar collapsible="icon">
