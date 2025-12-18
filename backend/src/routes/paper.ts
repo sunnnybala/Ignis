@@ -6,6 +6,7 @@ import { files as filesTable } from '../db/schema';
 import { getOpenAI } from '../llm/openai';
 import { initSse } from '../utils/sse';
 import { compileLatexToPdf, LatexCompileError } from '../services/latexCompiler';
+import { getSignedUrl } from '../storage/supabaseAdapter';
 
 export const paperRouter = Router();
 
@@ -14,6 +15,11 @@ const EXP_PATH = 'Experimentation/experiment.py';
 const PAPER_PATH = 'Final Paper/paper.tex';
 const META_PATH = 'Final Paper/athena_meta.txt';
 
+const PAPER_IMAGE_URL_EXPIRES_SEC = Number(process.env.PAPER_IMAGE_URL_EXPIRES_SEC || 900);
+const PAPER_MAX_IMAGE_COUNT = Number(process.env.PAPER_MAX_IMAGE_COUNT || 6);
+const PAPER_VISION_MODEL =
+	(process.env.OPENAI_PAPER_VISION_MODEL || process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+
 type AthenaMeta = {
 	publicationProbability: number; // 0..1
 	suggestedJournals: string[]; // limit 3
@@ -21,6 +27,18 @@ type AthenaMeta = {
 	hasResults?: boolean;
 	notes?: string;
 };
+
+function clampInt(n: number, min: number, max: number): number {
+	if (!Number.isFinite(n)) return min;
+	if (n < min) return min;
+	if (n > max) return max;
+	return Math.floor(n);
+}
+
+function isSupportedPaperImagePath(p: string): boolean {
+	const s = (p || '').toLowerCase();
+	return s.endsWith('.png') || s.endsWith('.jpg') || s.endsWith('.jpeg');
+}
 
 type PaperChatWriteToolArgs = {
 	latex: string;
@@ -118,6 +136,7 @@ async function loadProjectInputs(projectId: string): Promise<{
 	results: string;
 	hasResults: boolean;
 	paperTex: string;
+	latestResultsJobId: string | null;
 }> {
 	const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
 	const design = all.find((f) => f.path === DESIGN_PATH && f.type === 'md')?.content ?? '';
@@ -131,9 +150,49 @@ async function loadProjectInputs(projectId: string): Promise<{
 			const bt = (b.createdAt instanceof Date ? b.createdAt.getTime() : 0) || 0;
 			return bt - at;
 		});
-	const results = resultsCandidates[0]?.content ?? '';
+	const latestResultsFile = resultsCandidates[0];
+	const results = latestResultsFile?.content ?? '';
 	const hasResults = resultsCandidates.length > 0 && (results ?? '').trim().length > 0;
-	return { design, experiment, results, hasResults, paperTex };
+	// Prefer DB jobId; fallback to parsing path Results/<jobId>/results.txt
+	let latestResultsJobId: string | null = (latestResultsFile as any)?.jobId ? String((latestResultsFile as any).jobId) : null;
+	if (!latestResultsJobId && latestResultsFile?.path) {
+		const m = /^Results\/([^/]+)\/results\.txt$/i.exec(latestResultsFile.path);
+		if (m?.[1]) latestResultsJobId = m[1];
+	}
+	return { design, experiment, results, hasResults, paperTex, latestResultsJobId };
+}
+
+async function loadLatestJobImageUrls(projectId: string, jobId: string): Promise<Array<{ path: string; signedUrl: string }>> {
+	const ttl = clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600);
+	const maxCount = clampInt(PAPER_MAX_IMAGE_COUNT, 0, 20);
+	if (maxCount === 0) return [];
+
+	const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
+	const candidates = all
+		.filter((f) => String((f as any)?.jobId || '') === jobId)
+		.filter((f) => f.type === 'img')
+		.filter((f) => !!(f as any).storageKey)
+		.filter((f) => isSupportedPaperImagePath(f.path))
+		// stable-ish order for consistency
+		.sort((a, b) => a.path.localeCompare(b.path))
+		.slice(0, maxCount);
+
+	// Avoid logging signed URLs; only log counts/paths.
+	const out: Array<{ path: string; signedUrl: string }> = [];
+	for (const f of candidates) {
+		const key = String((f as any).storageKey || '').trim();
+		if (!key) continue;
+		try {
+			const signedUrl = await getSignedUrl(key, ttl);
+			out.push({ path: f.path, signedUrl });
+		} catch (e: unknown) {
+			if (process.env.NODE_ENV === 'development') {
+				// eslint-disable-next-line no-console
+				console.log('[paper.images] sign failed (skipping)', { projectId, jobId, path: f.path, error: String((e as any)?.message || e) });
+			}
+		}
+	}
+	return out;
 }
 
 function excerpt(s: string, max = 8000): string {
@@ -173,7 +232,9 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 			// eslint-disable-next-line no-console
 			console.log('[paper.generate] start', { traceId, projectId });
 		}
-		const { design, experiment, results, hasResults } = await loadProjectInputs(projectId);
+		const { design, experiment, results, hasResults, latestResultsJobId } = await loadProjectInputs(projectId);
+		const imageUrls =
+			latestResultsJobId && latestResultsJobId.trim().length > 0 ? await loadLatestJobImageUrls(projectId, latestResultsJobId) : [];
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
 			console.log('[paper.generate] inputs', {
@@ -183,6 +244,8 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 				experimentLen: experiment.length,
 				resultsLen: results.length,
 				hasResults,
+				latestResultsJobId,
+				imageCount: imageUrls.length,
 			});
 		}
 
@@ -190,15 +253,25 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 		const prompt = buildGeneratePrompt({ design, experiment, results, hasResults, selectedJournal });
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
-			console.log('[paper.generate] calling openai', { traceId, projectId, model: process.env.OPENAI_MODEL || 'gpt-4o-mini' });
+			console.log('[paper.generate] calling openai', {
+				traceId,
+				projectId,
+				model: PAPER_VISION_MODEL,
+				imageCount: imageUrls.length,
+				imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
+			});
+		}
+		const userContent: any[] = [{ type: 'text', text: prompt }];
+		for (const img of imageUrls) {
+			userContent.push({ type: 'image_url', image_url: { url: img.signedUrl, detail: 'auto' } });
 		}
 		const completion = await client.chat.completions.create({
-			model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+			model: PAPER_VISION_MODEL,
 			messages: [
 				{ role: 'system', content: 'You produce strictly formatted outputs.' },
-				{ role: 'user', content: prompt },
+				{ role: 'user', content: userContent as any },
 			],
-		});
+		} as any);
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
 			console.log('[paper.generate] openai done', { traceId, projectId });
@@ -244,7 +317,9 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 			console.log('[paper.regenerate] start', { traceId, projectId, journal });
 		}
 
-		const { design, experiment, results, hasResults, paperTex } = await loadProjectInputs(projectId);
+		const { design, experiment, results, hasResults, paperTex, latestResultsJobId } = await loadProjectInputs(projectId);
+		const imageUrls =
+			latestResultsJobId && latestResultsJobId.trim().length > 0 ? await loadLatestJobImageUrls(projectId, latestResultsJobId) : [];
 		const currentLatex = paperTex || '\\\\documentclass{article}\\n\\\\begin{document}\\n\\\\end{document}\\n';
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
@@ -257,6 +332,8 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 				experimentLen: experiment.length,
 				resultsLen: results.length,
 				hasResults,
+				latestResultsJobId,
+				imageCount: imageUrls.length,
 			});
 		}
 
@@ -264,15 +341,26 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 		const prompt = buildRegeneratePrompt({ currentLatex, design, experiment, results, hasResults, journal });
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] calling openai', { traceId, projectId, journal, model: process.env.OPENAI_MODEL || 'gpt-4o-mini' });
+			console.log('[paper.regenerate] calling openai', {
+				traceId,
+				projectId,
+				journal,
+				model: PAPER_VISION_MODEL,
+				imageCount: imageUrls.length,
+				imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
+			});
+		}
+		const userContent: any[] = [{ type: 'text', text: prompt }];
+		for (const img of imageUrls) {
+			userContent.push({ type: 'image_url', image_url: { url: img.signedUrl, detail: 'auto' } });
 		}
 		const completion = await client.chat.completions.create({
-			model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+			model: PAPER_VISION_MODEL,
 			messages: [
 				{ role: 'system', content: 'You produce strictly formatted outputs.' },
-				{ role: 'user', content: prompt },
+				{ role: 'user', content: userContent as any },
 			],
-		});
+		} as any);
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
 			console.log('[paper.regenerate] openai done', { traceId, projectId, journal });
