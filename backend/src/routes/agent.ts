@@ -9,8 +9,10 @@ import { getOpenAI } from '../llm/openai';
 import { currentMaster, inMaster1, inMaster2, sameMaster } from '../agent/phase';
 import { incrementLoop, setPhase } from '../db/agentState';
 import { isAllowedWrite } from '../agent/allowedPaths';
+import { parseDatasetConfig } from '../utils/datasetConfig';
 
 export const agentRouter = Router();
+const isDev = process.env.NODE_ENV === 'development';
 
 // Pending phase proposals awaiting user confirmation (MVP in-memory store)
 const pendingPhaseByProject = new Map<
@@ -34,6 +36,7 @@ async function upsertTextFile(projectId: string, path: string, type: 'txt' | 'md
 // POST /agent/:projectId/chat  -> SSE stream with phase + delta stubs
 agentRouter.post('/:projectId/chat', async (req, res) => {
 	const sse = initSse(res);
+	const traceId = crypto.randomUUID();
 	try {
 		const projectId = String(req.params.projectId);
 		const state = await getAgentState(projectId);
@@ -47,6 +50,16 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 
 		// Prepare OpenAI chat with minimal tools (ask_user, write_file) and prior history (no DB; provided by client)
 		const inputMessage = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+		if (isDev) {
+			// eslint-disable-next-line no-console
+			console.log('[agent.chat] start', {
+				traceId,
+				projectId,
+				phase: state.phase,
+				messageLen: inputMessage.length,
+				historyLen: Array.isArray(req.body?.history) ? req.body.history.length : 0,
+			});
+		}
 
 		// If there is a pending cross/master or soft-limit proposal and the user clearly approved/declined, handle it immediately
 		const pending = pendingPhaseByProject.get(projectId);
@@ -422,8 +435,32 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 					// Phase-scoped allowlist enforcement
 					const allowed = isAllowedWrite(state.phase as any, path, type);
 					if (!allowed.ok) {
+						if (isDev) {
+							// eslint-disable-next-line no-console
+							console.log('[agent.write_file] denied', {
+								traceId,
+								projectId,
+								phase: state.phase,
+								path,
+								op,
+								type,
+								reason: allowed.reason,
+							});
+						}
 						sse.write({ type: 'delta', text: `Error: ${allowed.reason}\n` });
 						return sse.close();
+					}
+					if (isDev) {
+						// eslint-disable-next-line no-console
+						console.log('[agent.write_file] allowed', {
+							traceId,
+							projectId,
+							phase: state.phase,
+							path,
+							op,
+							type,
+							contentLen: content.length,
+						});
 					}
 
 					// If append, fetch existing content to concatenate
@@ -438,6 +475,23 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 					}
 
 					await upsertTextFile(projectId, path, type, writeContent);
+
+					// Dataset config validation for logs only (MVP)
+					if (path === 'Design/dataset.json') {
+						const parsed = parseDatasetConfig(writeContent);
+						if (isDev) {
+							// eslint-disable-next-line no-console
+							console.log('[agent.dataset_json] parse', {
+								traceId,
+								projectId,
+								ok: parsed.ok,
+								error: parsed.ok ? undefined : parsed.error,
+								source: parsed.ok ? parsed.value.source : undefined,
+								kaggleDataset: parsed.ok ? parsed.value.kaggle.dataset : undefined,
+								subdir: parsed.ok ? parsed.value.layout?.subdir : undefined,
+							});
+						}
+					}
 
 					// Increment loop counter only when meaningful work happens (write_file) within a master
 					if (inMaster1(state.phase)) {
@@ -461,6 +515,10 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 	} catch (err: unknown) {
 		sse.write({ type: 'delta', text: `Error: ${err instanceof Error ? err.message : 'Failed'}\n` });
 	} finally {
+		if (isDev) {
+			// eslint-disable-next-line no-console
+			console.log('[agent.chat] end', { traceId, projectId: String(req.params.projectId) });
+		}
 		sse.close();
 	}
 });

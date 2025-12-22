@@ -11,6 +11,8 @@ const MASTER1: AllowedEntry[] = [
 
 const MASTER2: AllowedEntry[] = [
 	{ path: 'Design/design_plan.md', type: 'md' },
+	// Stored as type=txt in DB for MVP (path ends with .json)
+	{ path: 'Design/dataset.json', type: 'txt' },
 	{ path: 'Experimentation/experiment.py', type: 'py' },
 ];
 

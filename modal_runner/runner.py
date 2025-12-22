@@ -1,0 +1,451 @@
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import modal
+
+# =========
+# Modal app
+# =========
+
+APP_NAME = "ignis-experiment-runner"
+
+# Shared dataset cache across all users/jobs (MVP)
+DATASET_VOLUME_NAME = os.environ.get("IGNIS_DATASET_VOLUME_NAME", "ignis-datasets-cache")
+DATASET_MOUNT = "/vol"
+DATASET_ROOT = f"{DATASET_MOUNT}/datasets"
+
+# Kaggle credentials should be configured as a Modal Secret (MVP: global creds)
+# Recommended secret env vars:
+# - KAGGLE_USERNAME
+# - KAGGLE_KEY
+KAGGLE_SECRET_NAME = os.environ.get("IGNIS_KAGGLE_SECRET_NAME", "ignis-kaggle")
+
+# Internal safety caps (not part of the Node->Modal payload, per MVP requirements)
+MAX_LOG_CHARS = 200_000
+
+app = modal.App(APP_NAME)
+
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    # Modal web endpoints now require FastAPI to be installed in the Image.
+    # (Modal also renamed @web_endpoint -> @fastapi_endpoint)
+    .pip_install("fastapi", "pydantic", "requests", "kaggle")
+)
+
+dataset_vol = modal.Volume.from_name(DATASET_VOLUME_NAME, create_if_missing=True)
+kaggle_secret = modal.Secret.from_name(KAGGLE_SECRET_NAME)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _log(event: str, **fields: Any) -> None:
+    # Keep logs structured and consistent for grepping.
+    base = {"event": event, "ts": _now_ms(), **fields}
+    print("[modal.runner]", json.dumps(base, ensure_ascii=False))
+
+
+def _truncate(s: str, n: int = MAX_LOG_CHARS) -> str:
+    if s is None:
+        return ""
+    if len(s) <= n:
+        return s
+    half = n // 2
+    return s[:half] + "\n...\n" + s[-half:]
+
+
+def _safe_dataset_key(s: str) -> str:
+    # Convert "owner/dataset" -> "kaggle__owner__dataset" (safe path component)
+    s = s.strip()
+    s = s.replace("/", "__")
+    s = re.sub(r"[^a-zA-Z0-9._-]+", "-", s)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return f"kaggle__{s}"
+
+
+def _ensure_kaggle_auth(traceId: str, jobId: str, projectId: str) -> None:
+    # Kaggle library uses env vars KAGGLE_USERNAME/KAGGLE_KEY or ~/.kaggle/kaggle.json
+    # We'll support env vars as the simplest MVP.
+    u = os.environ.get("KAGGLE_USERNAME", "").strip()
+    k = os.environ.get("KAGGLE_KEY", "").strip()
+    if not u or not k:
+        raise RuntimeError("Kaggle credentials missing. Set KAGGLE_USERNAME and KAGGLE_KEY in Modal Secret.")
+    # Avoid logging secrets; just confirm presence.
+    _log("kaggle.auth.ok", traceId=traceId, jobId=jobId, projectId=projectId)
+
+
+def _parse_dataset_json(dataset_json_raw: str) -> Tuple[str, bool, Optional[str]]:
+    """
+    Returns (kaggle_dataset_slug, unzip, subdir)
+    """
+    obj = json.loads(dataset_json_raw)
+    if not isinstance(obj, dict):
+        raise ValueError("datasetJson must be an object")
+    if obj.get("source") != "kaggle":
+        raise ValueError(f"Unsupported source: {obj.get('source')}")
+    kaggle = obj.get("kaggle")
+    if not isinstance(kaggle, dict):
+        raise ValueError("kaggle must be an object")
+    slug = str(kaggle.get("dataset") or "").strip()
+    if not slug or "/" not in slug:
+        raise ValueError('kaggle.dataset must look like "owner/dataset"')
+    unzip = kaggle.get("unzip", True)
+    if not isinstance(unzip, bool):
+        raise ValueError("kaggle.unzip must be a boolean")
+    layout = obj.get("layout")
+    subdir: Optional[str] = None
+    if isinstance(layout, dict):
+        sd = layout.get("subdir")
+        if isinstance(sd, str) and sd.strip():
+            subdir = sd.strip()
+    return slug, unzip, subdir
+
+
+def _download_dataset_if_needed(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    kaggle_slug: str,
+    unzip: bool,
+) -> str:
+    Path(DATASET_ROOT).mkdir(parents=True, exist_ok=True)
+    key = _safe_dataset_key(kaggle_slug)
+    dataset_dir = Path(DATASET_ROOT) / key
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    ready = dataset_dir / ".ready"
+    downloading = dataset_dir / ".downloading"
+
+    if ready.exists():
+        _log("dataset.cache.hit", traceId=traceId, jobId=jobId, projectId=projectId, key=key, dir=str(dataset_dir))
+        return str(dataset_dir)
+
+    # Best-effort lock: if someone else is downloading, wait a bit then re-check.
+    if downloading.exists():
+        _log("dataset.cache.wait", traceId=traceId, jobId=jobId, projectId=projectId, key=key)
+        for _ in range(30):  # ~30s
+            if ready.exists():
+                _log("dataset.cache.hit.after_wait", traceId=traceId, jobId=jobId, projectId=projectId, key=key)
+                return str(dataset_dir)
+            time.sleep(1)
+
+    _log("dataset.cache.miss", traceId=traceId, jobId=jobId, projectId=projectId, key=key, dir=str(dataset_dir))
+
+    try:
+        downloading.write_text(json.dumps({"jobId": jobId, "at": _now_ms()}), encoding="utf-8")
+
+        # Clear old files except markers (MVP: no stale data logic; but avoid partial trash on retries)
+        for p in dataset_dir.iterdir():
+            if p.name in [".downloading", ".ready"]:
+                continue
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+
+        cmd = ["kaggle", "datasets", "download", "-d", kaggle_slug, "-p", str(dataset_dir)]
+        if unzip:
+            cmd.append("--unzip")
+        _log("kaggle.download.start", traceId=traceId, jobId=jobId, projectId=projectId, slug=kaggle_slug, unzip=unzip)
+        t0 = time.time()
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        ms = int((time.time() - t0) * 1000)
+        _log(
+            "kaggle.download.end",
+            traceId=traceId,
+            jobId=jobId,
+            projectId=projectId,
+            slug=kaggle_slug,
+            ms=ms,
+            code=proc.returncode,
+            stdoutLen=len(proc.stdout or ""),
+            stderrLen=len(proc.stderr or ""),
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(_truncate((proc.stderr or proc.stdout or "Kaggle download failed").strip(), 8000))
+
+        ready.write_text(json.dumps({"slug": kaggle_slug, "unzip": unzip, "at": _now_ms()}), encoding="utf-8")
+        dataset_vol.commit()
+        return str(dataset_dir)
+    finally:
+        try:
+            if downloading.exists() and ready.exists():
+                downloading.unlink()
+        except OSError:
+            pass
+
+
+def _run_experiment(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    experiment_py: str,
+    data_dir: str,
+) -> Tuple[int, str]:
+    with tempfile.TemporaryDirectory(prefix=f"ignis-{jobId}-") as td:
+        workdir = Path(td)
+        (workdir / "experiment.py").write_text(experiment_py, encoding="utf-8")
+        _log("experiment.exec.start", traceId=traceId, jobId=jobId, projectId=projectId, data_dir=data_dir)
+        t0 = time.time()
+        proc = subprocess.run(
+            ["python", "experiment.py", "--data_dir", data_dir],
+            cwd=str(workdir),
+            capture_output=True,
+            text=True,
+        )
+        ms = int((time.time() - t0) * 1000)
+        _log("experiment.exec.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=proc.returncode, ms=ms)
+
+        # Build results.txt content
+        out = proc.stdout or ""
+        err = proc.stderr or ""
+        results_text = f"Exit code: {proc.returncode}\n\n=== STDOUT ===\n{out}\n\n=== STDERR ===\n{err}\n"
+        results_text = _truncate(results_text, MAX_LOG_CHARS)
+
+        # Collect artifacts from workdir (MVP: only immediate files in workdir)
+        artifacts = []
+        for p in workdir.iterdir():
+            if not p.is_file():
+                continue
+            if p.name == "experiment.py":
+                continue
+            ext = p.suffix.lower()
+            if ext in [".png", ".csv"]:
+                artifacts.append(p)
+
+        return proc.returncode, results_text, artifacts
+
+
+def _guess_mime(p: Path) -> str:
+    if p.suffix.lower() == ".png":
+        return "image/png"
+    if p.suffix.lower() == ".csv":
+        return "text/csv"
+    return "application/octet-stream"
+
+
+def _presign_uploads(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    presign_url: str,
+    job_token: str,
+    artifacts: List[Path],
+) -> List[Dict[str, Any]]:
+    import requests
+
+    items = []
+    for p in artifacts:
+        size = p.stat().st_size
+        items.append({"fileName": p.name, "mimeType": _guess_mime(p), "sizeBytes": size})
+
+    _log("presign.request.start", traceId=traceId, jobId=jobId, projectId=projectId, count=len(items))
+    resp = requests.post(presign_url, json={"token": job_token, "items": items}, timeout=60)
+    if not resp.ok:
+        raise RuntimeError(f"Presign failed: HTTP {resp.status_code} — {resp.text[:2000]}")
+    data = resp.json()
+    uploads = data.get("uploads") if isinstance(data, dict) else None
+    if not isinstance(uploads, list):
+        raise RuntimeError("Presign response missing uploads[]")
+    _log("presign.request.end", traceId=traceId, jobId=jobId, projectId=projectId, count=len(uploads))
+    return uploads  # [{ key, signedUrl, token, fileName, mimeType }]
+
+
+def _upload_to_supabase_signed_url(
+    signed_url: str,
+    token: str,
+    content_type: str,
+    data: bytes,
+) -> None:
+    import requests
+
+    # Supabase signed upload URLs use an upload token. Exact semantics can vary; we try PUT first,
+    # then fall back to POST if needed.
+    headers = {"Content-Type": content_type, "Authorization": f"Bearer {token}"}
+
+    r = requests.put(signed_url, headers=headers, data=data, timeout=120)
+    if r.ok:
+        return
+
+    # Fallback attempt
+    r2 = requests.post(signed_url, headers=headers, data=data, timeout=120)
+    if r2.ok:
+        return
+
+    raise RuntimeError(f"Upload failed: PUT {r.status_code}, POST {r2.status_code} — {r2.text[:2000]}")
+
+
+def _upload_artifacts(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    presign_url: str,
+    job_token: str,
+    artifacts: List[Path],
+) -> List[Dict[str, Any]]:
+    uploads = _presign_uploads(traceId, jobId, projectId, presign_url, job_token, artifacts)
+    by_name = {u.get("fileName"): u for u in uploads if isinstance(u, dict)}
+    out: List[Dict[str, Any]] = []
+    for p in artifacts:
+        u = by_name.get(p.name)
+        if not u:
+            continue
+        signed_url = str(u.get("signedUrl") or "")
+        up_token = str(u.get("token") or "")
+        key = str(u.get("key") or "")
+        if not signed_url or not up_token or not key:
+            continue
+
+        data = p.read_bytes()
+        mime = _guess_mime(p)
+        _log("artifact.upload.start", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name, bytes=len(data))
+        _upload_to_supabase_signed_url(signed_url, up_token, mime, data)
+        _log("artifact.upload.end", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name)
+
+        out.append(
+            {
+                "path": f"Results/{jobId}/{p.name}",
+                "storageKey": key,
+                "mimeType": mime,
+                "sizeBytes": len(data),
+            }
+        )
+    return out
+
+
+def _call_complete(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    complete_url: str,
+    job_token: str,
+    exit_code: int,
+    results_text: str,
+    artifacts_meta: List[Dict[str, Any]],
+) -> None:
+    import requests
+
+    _log(
+        "complete.callback.start",
+        traceId=traceId,
+        jobId=jobId,
+        projectId=projectId,
+        exitCode=exit_code,
+        resultsLen=len(results_text),
+        artifactsCount=len(artifacts_meta),
+    )
+    resp = requests.post(
+        complete_url,
+        json={
+            "token": job_token,
+            "traceId": traceId,
+            "exitCode": exit_code,
+            "resultsText": results_text,
+            "artifacts": artifacts_meta,
+        },
+        timeout=60,
+    )
+    if not resp.ok:
+        raise RuntimeError(f"Complete callback failed: HTTP {resp.status_code} — {resp.text[:2000]}")
+    _log("complete.callback.end", traceId=traceId, jobId=jobId, projectId=projectId)
+
+
+@app.function(
+    image=image,
+    secrets=[kaggle_secret],
+    volumes={DATASET_MOUNT: dataset_vol},
+    timeout=60 * 60,  # 1 hour MVP default; can be tuned later
+)
+@modal.fastapi_endpoint(method="POST")
+def run(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    POST /run
+    Expects payload from Node:
+      { traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl }
+    """
+    traceId = str(payload.get("traceId") or "").strip() or str(_now_ms())
+    jobId = str(payload.get("jobId") or "").strip()
+    projectId = str(payload.get("projectId") or "").strip()
+
+    _log("run.received", traceId=traceId, jobId=jobId, projectId=projectId)
+
+    # Pull required fields
+    jobToken = str(payload.get("jobToken") or "").strip()
+    experimentPy = str(payload.get("experimentPy") or "")
+    datasetJson = str(payload.get("datasetJson") or "")
+    presignUrl = str(payload.get("presignUrl") or "").strip()
+    completeUrl = str(payload.get("completeUrl") or "").strip()
+
+    exit_code = 1
+    results_text = ""
+    artifacts_meta: List[Dict[str, Any]] = []
+
+    try:
+        if not jobId or not projectId or not jobToken:
+            raise RuntimeError("Missing required identifiers (jobId/projectId/jobToken)")
+        if not experimentPy.strip():
+            raise RuntimeError("experimentPy is empty")
+        if not datasetJson.strip():
+            raise RuntimeError("datasetJson is empty")
+        if not presignUrl or not completeUrl:
+            raise RuntimeError("Missing presignUrl/completeUrl")
+
+        kaggle_slug, unzip, subdir = _parse_dataset_json(datasetJson)
+        _log(
+            "dataset.parsed",
+            traceId=traceId,
+            jobId=jobId,
+            projectId=projectId,
+            source="kaggle",
+            slug=kaggle_slug,
+            unzip=unzip,
+            subdir=subdir,
+        )
+
+        _ensure_kaggle_auth(traceId, jobId, projectId)
+        dataset_dir = _download_dataset_if_needed(traceId, jobId, projectId, kaggle_slug, unzip)
+        data_dir = dataset_dir
+        if subdir:
+            data_dir = str(Path(dataset_dir) / subdir)
+
+        # Run experiment and collect artifacts
+        exit_code, results_text, artifacts = _run_experiment(traceId, jobId, projectId, experimentPy, data_dir)
+        _log("artifact.scan", traceId=traceId, jobId=jobId, projectId=projectId, count=len(artifacts))
+
+        # Upload artifacts (png/csv) via Node presign -> Supabase signed upload URLs
+        if artifacts:
+            artifacts_meta = _upload_artifacts(traceId, jobId, projectId, presignUrl, jobToken, artifacts)
+
+    except Exception as e:
+        # Always report completion with a clear error message.
+        msg = f"Runner error: {type(e).__name__}: {str(e)}"
+        _log("run.error", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 4000))
+        results_text = _truncate(results_text + "\n\n" + msg + "\n", MAX_LOG_CHARS)
+        exit_code = 1
+    finally:
+        # Attempt completion callback no matter what.
+        try:
+            _call_complete(traceId, jobId, projectId, completeUrl, jobToken, exit_code, results_text, artifacts_meta)
+        except Exception as e:
+            _log(
+                "complete.callback.failed",
+                traceId=traceId,
+                jobId=jobId,
+                projectId=projectId,
+                message=_truncate(f"{type(e).__name__}: {e}", 4000),
+            )
+
+    return {"ok": True, "jobId": jobId, "traceId": traceId}
+
+

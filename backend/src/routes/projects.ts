@@ -6,6 +6,8 @@ import { files, projects, users } from '../db/schema';
 
 export const projectsRouter = Router();
 
+const isDev = process.env.NODE_ENV === 'development';
+
 async function ensureDevUser() {
 	const devEmail = 'dev@ignis.local';
 	const [u] = await db.select().from(users).where(eq(users.email, devEmail));
@@ -31,6 +33,7 @@ projectsRouter.get('/', async (_req, res) => {
 // POST /projects { name }
 projectsRouter.post('/', async (req, res) => {
 	try {
+		const traceId = crypto.randomUUID();
 		const name = String(req.body?.name || '').trim();
 		if (!name) return res.status(400).json({ error: 'name is required' });
 
@@ -40,18 +43,41 @@ projectsRouter.post('/', async (req, res) => {
 		await db.insert(projects).values({ id: projectId, userId: user.id, name });
 
 		// Seed default tree
+		const datasetJsonSkeleton = JSON.stringify(
+			{
+				source: 'kaggle',
+				kaggle: { dataset: '', unzip: true },
+				layout: { subdir: '' },
+				notes: '',
+			},
+			null,
+			2,
+		);
 		const seed: Array<{ path: string; type: typeof files.$inferInsert.type; content?: string }>= [
 			{ path: 'Lit Review/papers.txt', type: 'txt', content: '' },
 			{ path: 'Lit Review/review.md', type: 'md', content: '' },
 			{ path: 'Design/design_plan.md', type: 'md', content: '' },
+			{ path: 'Design/dataset.json', type: 'txt', content: datasetJsonSkeleton },
 			{ path: 'Experimentation/experiment.py', type: 'py', content: '' },
 			{ path: 'Results/results.txt', type: 'txt', content: '' },
 			{ path: 'Final Paper/paper.tex', type: 'tex', content: '' },
 		];
+		if (isDev) {
+			// eslint-disable-next-line no-console
+			console.log('[projects.create] seed start', {
+				traceId,
+				projectId,
+				seedPaths: seed.map((s) => s.path),
+			});
+		}
 		for (const f of seed) {
 			await db
 				.insert(files)
 				.values({ projectId, path: f.path, type: f.type, content: f.content ?? '' });
+		}
+		if (isDev) {
+			// eslint-disable-next-line no-console
+			console.log('[projects.create] seed complete', { traceId, projectId });
 		}
 
 		return res.status(201).json({ id: projectId, name, userId: user.id });

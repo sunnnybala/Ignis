@@ -1,0 +1,6 @@
+modal
+fastapi
+pydantic
+requests
+kaggle
+
