@@ -10,6 +10,7 @@ import { currentMaster, inMaster1, inMaster2, sameMaster } from '../agent/phase'
 import { incrementLoop, setPhase } from '../db/agentState';
 import { isAllowedWrite } from '../agent/allowedPaths';
 import { parseDatasetConfig } from '../utils/datasetConfig';
+import { getAuthedUser, getOwnedProject, logAuthzDenied } from '../authz/ownership';
 
 export const agentRouter = Router();
 const isDev = process.env.NODE_ENV === 'development';
@@ -38,7 +39,18 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 	const sse = initSse(res);
 	const traceId = crypto.randomUUID();
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'delta', text: 'Error: Unauthorized\n' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'delta', text: 'Error: Project not found\n' });
+			return sse.close();
+		}
 		const state = await getAgentState(projectId);
 		if (!state) {
 			sse.write({ type: 'delta', text: 'Error: Project not found\n' });
@@ -526,7 +538,18 @@ agentRouter.post('/:projectId/chat', async (req, res) => {
 agentRouter.post('/:projectId/refine', async (req, res) => {
 	const sse = initSse(res);
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'error', message: 'Unauthorized' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'error', message: 'Project not found' });
+			return sse.close();
+		}
 		sse.write({ type: 'phase', phase: 'refine' });
 		sse.write({ type: 'delta', text: 'Analyzing idea...\n' });
 		await new Promise((r) => setTimeout(r, 300));
@@ -548,7 +571,18 @@ agentRouter.post('/:projectId/refine', async (req, res) => {
 agentRouter.post('/:projectId/literature', async (req, res) => {
 	const sse = initSse(res);
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'error', message: 'Unauthorized' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'error', message: 'Project not found' });
+			return sse.close();
+		}
 		sse.write({ type: 'phase', phase: 'literature' });
 		sse.write({ type: 'delta', text: 'Fetching related works...\n' });
 		await new Promise((r) => setTimeout(r, 300));
@@ -570,7 +604,18 @@ agentRouter.post('/:projectId/literature', async (req, res) => {
 agentRouter.post('/:projectId/experiment/generate', async (req, res) => {
 	const sse = initSse(res);
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'error', message: 'Unauthorized' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'error', message: 'Project not found' });
+			return sse.close();
+		}
 		sse.write({ type: 'phase', phase: 'experiment_generate' });
 		sse.write({ type: 'delta', text: 'Generating experiment.py...\n' });
 		const py = "# experiment.py (stub)\nimport math\n\nprint('hello from experiment')\n";
@@ -587,7 +632,18 @@ agentRouter.post('/:projectId/experiment/generate', async (req, res) => {
 agentRouter.post('/:projectId/paper/generate', async (req, res) => {
 	const sse = initSse(res);
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'error', message: 'Unauthorized' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'error', message: 'Project not found' });
+			return sse.close();
+		}
 		sse.write({ type: 'phase', phase: 'paper_generate' });
 		sse.write({ type: 'delta', text: 'Drafting LaTeX...\n' });
 		const tex = `\\documentclass{article}\n\\begin{document}\nStubbed paper.\\end{document}\n`;

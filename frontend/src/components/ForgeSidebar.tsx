@@ -16,7 +16,6 @@ import {
 import { SidebarHeaderBrand } from '@/components/SidebarHeaderBrand'
 import { SidebarUserFooter } from '@/components/SidebarUserFooter'
 import { ChevronRight, File, FileCode, FileText, Image, Folder, FolderOpen } from 'lucide-react'
-import { getDevUser } from '@/lib/devUser'
 
 function fileIcon(type?: string) {
   switch (type) {
@@ -71,8 +70,6 @@ export default function ForgeSidebar({
     })
   }
 
-  const user = getDevUser()
-
   // Listen for refresh signal after job completion
   useEffect(() => {
     const onRefresh = (e: Event) => {
@@ -115,7 +112,7 @@ export default function ForgeSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarUserFooter user={user} onLogout={() => console.log('logout')} />
+      <SidebarUserFooter />
     </Sidebar>
   )
 }

@@ -1,9 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { BarChart3, Folder } from 'lucide-react'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import { SidebarHeaderBrand } from '@/components/SidebarHeaderBrand'
 import { SidebarUserFooter } from '@/components/SidebarUserFooter'
-import { getDevUser } from '@/lib/devUser'
 
 const menu = [
   { title: 'Projects', to: '/home/projects', icon: Folder },
@@ -11,7 +10,7 @@ const menu = [
 ]
 
 export function AppHomeSidebar() {
-  const user = getDevUser()
+  const location = useLocation()
 
   return (
     <Sidebar collapsible="icon">
@@ -35,7 +34,7 @@ export function AppHomeSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarUserFooter user={user} onLogout={() => console.log('logout')} />
+      <SidebarUserFooter />
     </Sidebar>
   )
 }

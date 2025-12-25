@@ -34,9 +34,9 @@ app = modal.App(APP_NAME)
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    # Modal web endpoints now require FastAPI to be installed in the Image.
-    # (Modal also renamed @web_endpoint -> @fastapi_endpoint)
-    .pip_install("fastapi", "pydantic", "requests", "kaggle")
+    # Install ALL runtime deps from modal_runner/requirements.txt so the experiment environment
+    # matches the pinned list in repo. To add packages, edit requirements.txt and redeploy.
+    .pip_install_from_requirements("modal_runner/requirements.txt")
 )
 
 dataset_vol = modal.Volume.from_name(DATASET_VOLUME_NAME, create_if_missing=True)
@@ -169,8 +169,8 @@ def _download_dataset_if_needed(
             slug=kaggle_slug,
             ms=ms,
             code=proc.returncode,
-            stdoutLen=len(proc.stdout or ""),
-            stderrLen=len(proc.stderr or ""),
+            stdoutLen=proc.stdout or "",
+            stderrLen=proc.stderr or "",
         )
         if proc.returncode != 0:
             raise RuntimeError(_truncate((proc.stderr or proc.stdout or "Kaggle download failed").strip(), 8000))
@@ -184,47 +184,6 @@ def _download_dataset_if_needed(
                 downloading.unlink()
         except OSError:
             pass
-
-
-def _run_experiment(
-    traceId: str,
-    jobId: str,
-    projectId: str,
-    experiment_py: str,
-    data_dir: str,
-) -> Tuple[int, str]:
-    with tempfile.TemporaryDirectory(prefix=f"ignis-{jobId}-") as td:
-        workdir = Path(td)
-        (workdir / "experiment.py").write_text(experiment_py, encoding="utf-8")
-        _log("experiment.exec.start", traceId=traceId, jobId=jobId, projectId=projectId, data_dir=data_dir)
-        t0 = time.time()
-        proc = subprocess.run(
-            ["python", "experiment.py", "--data_dir", data_dir],
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
-        )
-        ms = int((time.time() - t0) * 1000)
-        _log("experiment.exec.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=proc.returncode, ms=ms)
-
-        # Build results.txt content
-        out = proc.stdout or ""
-        err = proc.stderr or ""
-        results_text = f"Exit code: {proc.returncode}\n\n=== STDOUT ===\n{out}\n\n=== STDERR ===\n{err}\n"
-        results_text = _truncate(results_text, MAX_LOG_CHARS)
-
-        # Collect artifacts from workdir (MVP: only immediate files in workdir)
-        artifacts = []
-        for p in workdir.iterdir():
-            if not p.is_file():
-                continue
-            if p.name == "experiment.py":
-                continue
-            ext = p.suffix.lower()
-            if ext in [".png", ".csv"]:
-                artifacts.append(p)
-
-        return proc.returncode, results_text, artifacts
 
 
 def _guess_mime(p: Path) -> str:
@@ -298,29 +257,42 @@ def _upload_artifacts(
     by_name = {u.get("fileName"): u for u in uploads if isinstance(u, dict)}
     out: List[Dict[str, Any]] = []
     for p in artifacts:
-        u = by_name.get(p.name)
-        if not u:
-            continue
-        signed_url = str(u.get("signedUrl") or "")
-        up_token = str(u.get("token") or "")
-        key = str(u.get("key") or "")
-        if not signed_url or not up_token or not key:
-            continue
+        try:
+            u = by_name.get(p.name)
+            if not u:
+                _log("artifact.upload.skip", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name, reason="no presign entry")
+                continue
+            signed_url = str(u.get("signedUrl") or "")
+            up_token = str(u.get("token") or "")
+            key = str(u.get("key") or "")
+            if not signed_url or not up_token or not key:
+                _log("artifact.upload.skip", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name, reason="missing signedUrl/token/key")
+                continue
 
-        data = p.read_bytes()
-        mime = _guess_mime(p)
-        _log("artifact.upload.start", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name, bytes=len(data))
-        _upload_to_supabase_signed_url(signed_url, up_token, mime, data)
-        _log("artifact.upload.end", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name)
+            data = p.read_bytes()
+            mime = _guess_mime(p)
+            _log("artifact.upload.start", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name, bytes=len(data))
+            _upload_to_supabase_signed_url(signed_url, up_token, mime, data)
+            _log("artifact.upload.end", traceId=traceId, jobId=jobId, projectId=projectId, name=p.name)
 
-        out.append(
-            {
-                "path": f"Results/{jobId}/{p.name}",
-                "storageKey": key,
-                "mimeType": mime,
-                "sizeBytes": len(data),
-            }
-        )
+            out.append(
+                {
+                    "path": f"Results/{jobId}/{p.name}",
+                    "storageKey": key,
+                    "mimeType": mime,
+                    "sizeBytes": len(data),
+                }
+            )
+        except Exception as e:
+            # Non-fatal: continue uploading other artifacts and report warning via resultsText.
+            _log(
+                "artifact.upload.error",
+                traceId=traceId,
+                jobId=jobId,
+                projectId=projectId,
+                name=p.name,
+                message=_truncate(f"{type(e).__name__}: {e}", 2000),
+            )
     return out
 
 
@@ -374,6 +346,11 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
     Expects payload from Node:
       { traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl }
     """
+    # Dynamic import so local editors without FastAPI installed don't warn/error;
+    # Modal runtime image includes FastAPI (required for @fastapi_endpoint).
+    import importlib
+    HTTPException = importlib.import_module("fastapi").HTTPException
+
     traceId = str(payload.get("traceId") or "").strip() or str(_now_ms())
     jobId = str(payload.get("jobId") or "").strip()
     projectId = str(payload.get("projectId") or "").strip()
@@ -387,20 +364,70 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
     presignUrl = str(payload.get("presignUrl") or "").strip()
     completeUrl = str(payload.get("completeUrl") or "").strip()
 
+    # Fast validation only (ack quickly). Long work happens in execute_job().
+    if not jobId or not projectId or not jobToken:
+        raise HTTPException(status_code=400, detail="Missing required identifiers (jobId/projectId/jobToken)")
+    if not experimentPy.strip():
+        raise HTTPException(status_code=400, detail="experimentPy is empty")
+    if not datasetJson.strip():
+        raise HTTPException(status_code=400, detail="datasetJson is empty")
+    if not presignUrl or not completeUrl:
+        raise HTTPException(status_code=400, detail="Missing presignUrl/completeUrl")
+
+    # Parse dataset config as part of validation (do not download yet)
+    try:
+        kaggle_slug, unzip, subdir = _parse_dataset_json(datasetJson)
+    except Exception as e:
+        _log("run.validation.error", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(f"{type(e).__name__}: {e}", 2000))
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _log(
+        "run.validation.ok",
+        traceId=traceId,
+        jobId=jobId,
+        projectId=projectId,
+        source="kaggle",
+        slug=kaggle_slug,
+        unzip=unzip,
+        subdir=subdir,
+    )
+
+    # Spawn long-running work asynchronously and return an ack immediately.
+    fc = execute_job.spawn(traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl)
+    _log("run.ack", traceId=traceId, jobId=jobId, projectId=projectId, function_call_id=str(getattr(fc, "object_id", "")))
+    return {"ok": True, "jobId": jobId, "traceId": traceId, "queued": True}
+
+
+@app.function(
+    image=image,
+    secrets=[kaggle_secret],
+    volumes={DATASET_MOUNT: dataset_vol},
+    timeout=60 * 60,  # long work timeout
+)
+def execute_job(
+    traceId: str,
+    jobId: str,
+    projectId: str,
+    jobToken: str,
+    experimentPy: str,
+    datasetJson: str,
+    presignUrl: str,
+    completeUrl: str,
+) -> None:
+    """
+    Long-running worker:
+    - dataset download/cache
+    - experiment run
+    - artifact upload
+    - callback to Node /complete
+    """
+    _log("execute.start", traceId=traceId, jobId=jobId, projectId=projectId)
+
     exit_code = 1
     results_text = ""
     artifacts_meta: List[Dict[str, Any]] = []
 
     try:
-        if not jobId or not projectId or not jobToken:
-            raise RuntimeError("Missing required identifiers (jobId/projectId/jobToken)")
-        if not experimentPy.strip():
-            raise RuntimeError("experimentPy is empty")
-        if not datasetJson.strip():
-            raise RuntimeError("datasetJson is empty")
-        if not presignUrl or not completeUrl:
-            raise RuntimeError("Missing presignUrl/completeUrl")
-
         kaggle_slug, unzip, subdir = _parse_dataset_json(datasetJson)
         _log(
             "dataset.parsed",
@@ -419,22 +446,63 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
         if subdir:
             data_dir = str(Path(dataset_dir) / subdir)
 
-        # Run experiment and collect artifacts
-        exit_code, results_text, artifacts = _run_experiment(traceId, jobId, projectId, experimentPy, data_dir)
-        _log("artifact.scan", traceId=traceId, jobId=jobId, projectId=projectId, count=len(artifacts))
+        # Run experiment + upload artifacts BEFORE the temp directory is deleted.
+        with tempfile.TemporaryDirectory(prefix=f"ignis-{jobId}-") as td:
+            workdir = Path(td)
+            (workdir / "experiment.py").write_text(experimentPy, encoding="utf-8")
 
-        # Upload artifacts (png/csv) via Node presign -> Supabase signed upload URLs
-        if artifacts:
-            artifacts_meta = _upload_artifacts(traceId, jobId, projectId, presignUrl, jobToken, artifacts)
+            _log("experiment.exec.start", traceId=traceId, jobId=jobId, projectId=projectId, data_dir=data_dir)
+            t0 = time.time()
+            proc = subprocess.run(
+                ["python", "experiment.py", "--data_dir", data_dir],
+                cwd=str(workdir),
+                capture_output=True,
+                text=True,
+            )
+            ms = int((time.time() - t0) * 1000)
+            exit_code = proc.returncode
+            _log("experiment.exec.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=exit_code, ms=ms)
+
+            out = proc.stdout or ""
+            err = proc.stderr or ""
+            results_text = f"Exit code: {exit_code}\n\n=== STDOUT ===\n{out}\n\n=== STDERR ===\n{err}\n"
+            results_text = _truncate(results_text, MAX_LOG_CHARS)
+
+            # Collect artifacts from workdir (MVP: only immediate files in workdir)
+            artifacts: List[Path] = []
+            for p in workdir.iterdir():
+                if not p.is_file():
+                    continue
+                if p.name == "experiment.py":
+                    continue
+                ext = p.suffix.lower()
+                if ext in [".png", ".csv"]:
+                    artifacts.append(p)
+
+            _log(
+                "artifact.scan",
+                traceId=traceId,
+                jobId=jobId,
+                projectId=projectId,
+                count=len(artifacts),
+                names=[p.name for p in artifacts][:50],
+            )
+
+            # Upload artifacts (png/csv). Non-fatal: failures append a warning to results_text.
+            if artifacts:
+                try:
+                    artifacts_meta = _upload_artifacts(traceId, jobId, projectId, presignUrl, jobToken, artifacts)
+                except Exception as e:
+                    msg = f"Artifact upload failed (non-fatal): {type(e).__name__}: {e}"
+                    _log("artifact.upload.failed", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 2000))
+                    results_text = _truncate(results_text + "\n\n" + msg + "\n", MAX_LOG_CHARS)
 
     except Exception as e:
-        # Always report completion with a clear error message.
         msg = f"Runner error: {type(e).__name__}: {str(e)}"
-        _log("run.error", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 4000))
+        _log("execute.error", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 4000))
         results_text = _truncate(results_text + "\n\n" + msg + "\n", MAX_LOG_CHARS)
         exit_code = 1
     finally:
-        # Attempt completion callback no matter what.
         try:
             _call_complete(traceId, jobId, projectId, completeUrl, jobToken, exit_code, results_text, artifacts_meta)
         except Exception as e:
@@ -446,6 +514,6 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
                 message=_truncate(f"{type(e).__name__}: {e}", 4000),
             )
 
-    return {"ok": True, "jobId": jobId, "traceId": traceId}
+    _log("execute.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=exit_code, artifactsCount=len(artifacts_meta))
 
 

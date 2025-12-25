@@ -9,16 +9,26 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-
-type User = { name: string; email: string; avatarUrl?: string }
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthProvider'
 
 export function SidebarUserFooter({
-  user,
-  onLogout,
 }: {
-  user: User
-  onLogout?: () => void
+  // no props: user comes from Supabase auth context
 }) {
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
+
+  const name =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    (user?.email ? user.email.split('@')[0] : 'User')
+  const email = user?.email || '—'
+  const avatarUrl =
+    (user?.user_metadata?.avatar_url as string | undefined) ||
+    (user?.user_metadata?.picture as string | undefined) ||
+    '/Ignis_Logo.png'
+
   const toggleDarkMode = () => {
     const root = document.documentElement
     root.classList.toggle('dark')
@@ -30,15 +40,23 @@ export function SidebarUserFooter({
     }
   }
 
+  const onLogout = async () => {
+    try {
+      await signOut()
+    } finally {
+      navigate('/login', { replace: true })
+    }
+  }
+
   return (
     <SidebarFooter>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-sidebar-accent">
             <Avatar className="size-6">
-              <AvatarImage src={user.avatarUrl || '/Ignis_Logo.png'} alt={user.name} />
+              <AvatarImage src={avatarUrl} alt={name} />
               <AvatarFallback>
-                {user.name
+                {name
                   .split(' ')
                   .map((p) => p[0])
                   .join('')
@@ -46,20 +64,20 @@ export function SidebarUserFooter({
                   .toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <span className="truncate text-sm">{user.name}</span>
+            <span className="truncate text-sm">{name}</span>
             <ChevronUp className="ml-auto size-4 opacity-60" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-56">
           <DropdownMenuLabel>
             <div className="flex flex-col">
-              <span className="font-medium">{user.name}</span>
-              <span className="text-xs text-muted-foreground">{user.email}</span>
+              <span className="font-medium">{name}</span>
+              <span className="text-xs text-muted-foreground">{email}</span>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={toggleDarkMode}>Toggle dark mode</DropdownMenuItem>
-          <DropdownMenuItem onClick={onLogout}>Log out</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void onLogout()}>Log out</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarFooter>

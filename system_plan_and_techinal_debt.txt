@@ -8,3 +8,5 @@
 8)modal logs are written at the end, not incrrementally
 9) many function sused in multiple places have been implemneted in multiple places. reduce redundancy. 
 10) only png and csv uplaod allowed currnetlt, handle other artifacts like jpeg jpg pt etc too later on
+11) some issue with saving the files, it doesnt save when crtl+s. 
+12) filetree name of file changing, upload files in results called use uplaoded and etc not implemneted yet  

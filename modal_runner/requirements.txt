@@ -4,3 +4,20 @@ pydantic
 requests
 kaggle
 
+# Core
+numpy
+pandas
+scikit-learn
+
+# PyTorch
+torch
+torchvision
+
+# Vision & models
+timm
+
+# Plotting
+matplotlib
+
+# Utilities
+Pillow

@@ -7,6 +7,7 @@ import { getOpenAI } from '../llm/openai';
 import { initSse } from '../utils/sse';
 import { compileLatexToPdf, LatexCompileError } from '../services/latexCompiler';
 import { getSignedUrl } from '../storage/supabaseAdapter';
+import { getAuthedUser, getOwnedProject, logAuthzDenied } from '../authz/ownership';
 
 export const paperRouter = Router();
 
@@ -225,7 +226,14 @@ function buildRegeneratePrompt(input: {
 
 paperRouter.post('/:projectId/generate', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		const selectedJournal = 'General';
 		const traceId = crypto.randomUUID();
 		if (process.env.NODE_ENV === 'development') {
@@ -309,7 +317,14 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 
 paperRouter.post('/:projectId/regenerate', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		const journal = typeof req.body?.journal === 'string' && req.body.journal.trim().length > 0 ? req.body.journal.trim() : 'General';
 		const traceId = crypto.randomUUID();
 		if (process.env.NODE_ENV === 'development') {
@@ -398,7 +413,14 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 // POST /paper/:projectId/compile -> compile current paper.tex and return a PDF (no uploads yet)
 paperRouter.post('/:projectId/compile', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		const traceId = crypto.randomUUID();
 		const t0 = Date.now();
 		const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
@@ -451,7 +473,18 @@ paperRouter.post('/:projectId/compile', async (req, res) => {
 paperRouter.post('/:projectId/chat', async (req, res) => {
 	const sse = initSse(res);
 	try {
+		const user = getAuthedUser(req);
+		if (!user) {
+			sse.write({ type: 'delta', text: 'Error: Unauthorized\n' });
+			return sse.close();
+		}
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			sse.write({ type: 'delta', text: 'Error: Project not found\n' });
+			return sse.close();
+		}
 		const inputMessage = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
 		const history = Array.isArray(req.body?.history)
 			? (req.body.history as Array<{ role?: unknown; text?: unknown }>)

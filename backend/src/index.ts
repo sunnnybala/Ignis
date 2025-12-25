@@ -21,7 +21,17 @@ app.use(
     credentials: false,
   }),
 );
+
+// Request context (requestId + structured request logging)
+import { requestContext } from './middleware/requestContext';
+app.use(requestContext);
+
+// Body parsing
 app.use(express.json({ limit: '1mb' }));
+
+// Auth (Supabase JWT). Public endpoints are allowlisted inside requireAuth.
+import { requireAuth } from './middleware/auth';
+app.use(requireAuth);
 
 // Routes
 import { filesRouter } from './routes/files';

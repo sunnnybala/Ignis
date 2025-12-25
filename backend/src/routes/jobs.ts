@@ -9,6 +9,8 @@ import { getSignedUploadUrl } from '../storage/supabaseAdapter';
 import { files as filesTable } from '../db/schema';
 import { fetch } from 'undici';
 import { parseDatasetConfig } from '../utils/datasetConfig';
+import { getAuthedUser, getOwnedJob, getOwnedProject, logAuthzDenied } from '../authz/ownership';
+import { logger } from '../utils/logger';
 
 export const jobsRouter = Router();
 
@@ -91,7 +93,14 @@ async function upsertFile(opts: {
 // POST /experiment/:projectId/run -> create job + call Modal runner
 jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		const traceId = crypto.randomUUID();
 		const jobToken = crypto.randomUUID();
 
@@ -112,6 +121,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 			status: 'queued',
 			metadata: { traceId, jobToken },
 		});
+		logger.info('job.enqueue', { requestId: req.requestId || null, traceId, jobId, projectId, userId: user.id });
 
 		if (isDev) {
 			// eslint-disable-next-line no-console
@@ -153,13 +163,16 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 				datasetError: parsed.ok ? undefined : parsed.error,
 				kaggleDataset: parsed.ok ? parsed.value.kaggle.dataset : undefined,
 			});
-		}
+			}
 
 		const baseUrl = getBaseUrl(req);
 		const presignUrl = `${baseUrl}/jobs/${jobId}/artifacts/presign`;
 		const completeUrl = `${baseUrl}/jobs/${jobId}/complete`;
 
-		const runnerUrl = `${MODAL_RUNNER_URL.replace(/\/+$/, '')}/run`;
+		// Modal prints the full web function URL (typically rooted at "/"), e.g.
+		//   https://<workspace>--<app>-<function>.modal.run
+		// So MODAL_RUNNER_URL should be set to that full URL and we should not append "/run" here.
+		const runnerUrl = `${MODAL_RUNNER_URL.replace(/\/+$/, '')}`;
 		if (isDev) {
 			// eslint-disable-next-line no-console
 			console.log('[jobs.run] calling modal', { traceId, jobId, runnerUrl, presignUrl, completeUrl });
@@ -200,7 +213,23 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 			return res.status(502).json({ error: 'Modal runner rejected', details: `HTTP ${resp.status}`, jobId });
 		}
 
-		await db.update(jobs).set({ status: 'running', startedAt: new Date() }).where(eq(jobs.id, jobId));
+		// Mark as running, but ONLY if the job is still queued.
+		// Modal can fail fast and call /complete before we reach this point; we must not overwrite
+		// a terminal status (completed/failed) back to running.
+		const runningRows = await db
+			.update(jobs)
+			.set({ status: 'running', startedAt: new Date() })
+			.where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued')))
+			.returning({ id: jobs.id });
+		if (isDev && runningRows.length === 0) {
+			const [cur] = await db.select({ status: jobs.status }).from(jobs).where(eq(jobs.id, jobId));
+			// eslint-disable-next-line no-console
+			console.log('[jobs.run] running skipped (already transitioned)', {
+				traceId,
+				jobId,
+				currentStatus: cur?.status,
+			});
+		}
 		if (isDev) {
 			// eslint-disable-next-line no-console
 			console.log('[jobs.run] modal accepted', { traceId, jobId });
@@ -215,7 +244,14 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 // POST /paper/:projectId/compile (stub)
 jobsRouter.post('/paper/:projectId/compile', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
 			console.log('[jobs] enqueue compile', { projectId });
@@ -238,7 +274,6 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 		const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
 		if (!job) return res.status(404).json({ error: 'Job not found' });
 
-		// TODO: AuthZ: ensure requester is project owner
 		const traceId = getTraceId(job) || crypto.randomUUID();
 		const expectedToken = getJobToken(job);
 		const providedToken = typeof req.body?.token === 'string' ? String(req.body.token).trim() : '';
@@ -255,6 +290,7 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 		if (!items.length) {
 			return res.status(400).json({ error: 'No items provided' });
 		}
+		logger.info('job.presign', { requestId: req.requestId || null, traceId, jobId, projectId: job.projectId, count: items.length });
 		if (isDev) {
 			// eslint-disable-next-line no-console
 			console.log('[jobs.presign] start', {
@@ -338,6 +374,14 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 				output: resultsText,
 			})
 			.where(eq(jobs.id, jobId));
+		logger.info('job.complete', {
+			requestId: req.requestId || null,
+			traceId,
+			jobId,
+			projectId: job.projectId,
+			status,
+			artifactsCount: Array.isArray(artifacts) ? artifacts.length : 0,
+		});
 
 		// Persist results.txt into DB-visible tree
 		await upsertFile({
@@ -400,10 +444,15 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 // GET /jobs/:jobId -> fetch job metadata/status
 jobsRouter.get('/:jobId', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const jobId = String(req.params.jobId);
-		const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
-		if (!job) return res.status(404).json({ error: 'Job not found' });
-		return res.status(200).json(job);
+		const ownedJob = await getOwnedJob(jobId, user.id);
+		if (!ownedJob) {
+			logAuthzDenied(req, { jobId });
+			return res.status(404).json({ error: 'Job not found' });
+		}
+		return res.status(200).json(ownedJob);
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to fetch job';
 		return res.status(500).json({ error: message });
@@ -413,7 +462,14 @@ jobsRouter.get('/:jobId', async (req, res) => {
 // POST /jobs/paper/:projectId/generate -> call external create_paper and write Final Paper/paper.tex
 jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 	try {
+		const user = getAuthedUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.projectId);
+		const owned = await getOwnedProject(projectId, user.id);
+		if (!owned) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
 		if (process.env.NODE_ENV === 'development') {
 			// eslint-disable-next-line no-console
 			console.log('[paper] assembling inputs', { projectId });
@@ -435,7 +491,8 @@ jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 		}
 		// Build payload
 		const payload = {
-			email_address: process.env.PAPER_EMAIL || 'dev@ignis.local',
+			// NOTE: This is a legacy integration; do not use dev user emails in production defaults.
+			email_address: process.env.PAPER_EMAIL || 'noreply@ignis.to',
 			raw_data: JSON.stringify({
 				'design_plan.md': design,
 				'experiment.py': exp,

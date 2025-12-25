@@ -1,16 +1,69 @@
+import { supabase } from '@/lib/supabaseClient'
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:4000'
 
+function warnApi(event: string, fields: Record<string, unknown>) {
+  // Keep this as warn even in prod; it helps diagnose auth/config issues without leaking secrets.
+  // eslint-disable-next-line no-console
+  console.warn(`[warn] api.${event}`, fields)
+}
+
+async function getAccessToken(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    if (error) return null
+    return data.session?.access_token ?? null
+  } catch {
+    return null
+  }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function redirectToLoginIfNeeded() {
+  // Avoid redirect loops on the login page.
+  if (window.location.pathname.startsWith('/login')) return
+  const from = window.location.pathname + window.location.search
+  window.location.replace(`/login?from=${encodeURIComponent(from)}`)
+}
+
+async function handleErrorResponse(resp: Response, path: string): Promise<never> {
+  const requestId = resp.headers.get('x-request-id') || ''
+  if (resp.status === 401) {
+    warnApi('error', { path, status: resp.status, requestId })
+    // Best-effort signout: clears any stale local session.
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      // ignore
+    }
+    redirectToLoginIfNeeded()
+    throw new Error(`HTTP 401`)
+  }
+
+  warnApi('error', { path, status: resp.status, requestId })
+  throw new Error(`HTTP ${resp.status}${requestId ? ` (x-request-id: ${requestId})` : ''}`)
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = await authHeaders()
   const resp = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...auth, ...(init?.headers || {}) },
     ...init,
   })
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  if (!resp.ok) await handleErrorResponse(resp, path)
   return resp.json() as Promise<T>
 }
 
 async function apiBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const resp = await fetch(`${API_BASE}${path}`, init)
+  const auth = await authHeaders()
+  const resp = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { ...auth, ...(init?.headers || {}) },
+  })
   if (!resp.ok) {
     // try to surface JSON error bodies, fallback to status
     let details = ''
@@ -20,7 +73,20 @@ async function apiBlob(path: string, init?: RequestInit): Promise<Blob> {
     } catch {
       // ignore
     }
-    throw new Error(`HTTP ${resp.status}${details}`)
+    if (resp.status === 401) {
+      const requestId = resp.headers.get('x-request-id') || ''
+      warnApi('error', { path, status: resp.status, requestId })
+      try {
+        await supabase.auth.signOut()
+      } catch {
+        // ignore
+      }
+      redirectToLoginIfNeeded()
+      throw new Error(`HTTP 401${details}`)
+    }
+    const requestId = resp.headers.get('x-request-id') || ''
+    warnApi('error', { path, status: resp.status, requestId })
+    throw new Error(`HTTP ${resp.status}${details}${requestId ? ` (x-request-id: ${requestId})` : ''}`)
   }
   return resp.blob()
 }

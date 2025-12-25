@@ -1,27 +1,27 @@
 import { Router } from 'express';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { db } from '../db/client';
-import { files, projects, users } from '../db/schema';
+import { files, projects } from '../db/schema';
+import { ensureUserProfile } from '../db/userProfile';
+import { logAuthzDenied } from '../authz/ownership';
 
 export const projectsRouter = Router();
 
 const isDev = process.env.NODE_ENV === 'development';
 
-async function ensureDevUser() {
-	const devEmail = 'dev@ignis.local';
-	const [u] = await db.select().from(users).where(eq(users.email, devEmail));
-	if (u) return u;
-	const id = crypto.randomUUID();
-	await db.insert(users).values({ id, email: devEmail, passwordHash: 'dev', name: 'Dev User' });
-	const [user] = await db.select().from(users).where(eq(users.id, id));
-	return user;
+function requireUser(req: any): { id: string; email?: string | null; role?: string | null } | null {
+	const u = req?.user;
+	if (!u || typeof u.id !== 'string' || !u.id.trim()) return null;
+	return { id: String(u.id), email: typeof u.email === 'string' ? u.email : null, role: typeof u.role === 'string' ? u.role : null };
 }
 
-// GET /projects -> list projects for current user (dev user for now)
-projectsRouter.get('/', async (_req, res) => {
+// GET /projects -> list projects for current authenticated user
+projectsRouter.get('/', async (req, res) => {
 	try {
-		const user = await ensureDevUser();
+		const user = requireUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
+		await ensureUserProfile(user);
 		const rows = await db.select().from(projects).where(eq(projects.userId, user.id));
 		return res.status(200).json(rows);
 	} catch (err: unknown) {
@@ -37,8 +37,9 @@ projectsRouter.post('/', async (req, res) => {
 		const name = String(req.body?.name || '').trim();
 		if (!name) return res.status(400).json({ error: 'name is required' });
 
-		// TODO: replace dev user with authenticated user
-		const user = await ensureDevUser();
+		const user = requireUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
+		await ensureUserProfile(user);
 		const projectId = crypto.randomUUID();
 		await db.insert(projects).values({ id: projectId, userId: user.id, name });
 
@@ -90,7 +91,21 @@ projectsRouter.post('/', async (req, res) => {
 // GET /projects/:id/files/tree
 projectsRouter.get('/:id/files/tree', async (req, res) => {
 	try {
+		const user = requireUser(req);
+		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.id);
+
+		// Minimal AuthZ: ensure the project belongs to the requesting user.
+		// (This prevents cross-user file tree leakage now that auth is enabled globally.)
+		const [proj] = await db
+			.select({ id: projects.id })
+			.from(projects)
+			.where(and(eq(projects.id, projectId), eq(projects.userId, user.id)));
+		if (!proj) {
+			logAuthzDenied(req, { projectId });
+			return res.status(404).json({ error: 'Project not found' });
+		}
+
 		const rows = await db.select().from(files).where(eq(files.projectId, projectId));
 		// Build a simple tree
 		type TreeNode = { kind: 'dir' | 'file'; name: string; path: string; children?: TreeNode[]; fileId?: string; type?: string };
