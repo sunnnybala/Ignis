@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-
+import { mastra } from "./mastra";
 dotenv.config();
 
 const app = express();
@@ -29,6 +29,28 @@ app.use(requestContext);
 // Body parsing
 app.use(express.json({ limit: '1mb' }));
 
+// Public test endpoint (Option A): call Mastra agent directly from Express
+app.get('/api/weather', async (req, res) => {
+  const { city } = req.query as { city?: string };
+
+  if (!city) {
+    return res.status(400).send("Missing 'city' query parameter");
+  }
+
+  try {
+    const agent = mastra.getAgent('weatherAgent');
+    const result = await agent.generate(`What's the weather like in ${city}?`);
+    return res.status(200).send(result.text);
+  } catch (error) {
+    console.error('Agent error:', error);
+    return res.status(500).send('An error occurred while processing your request');
+  }
+});
+
+// Public test routes (mounted before auth for local testing)
+import { vfsRouter } from './routes/vfs';   // added just for testing purposes
+app.use('/vfs', vfsRouter);                // added just for testing purposes
+
 // Auth (Supabase JWT). Public endpoints are allowlisted inside requireAuth.
 import { requireAuth } from './middleware/auth';
 app.use(requireAuth);
@@ -55,5 +77,7 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 app.listen(port, () => {
   console.log(`Backend listening on http://localhost:${port}`);
 });
+
+
 
 

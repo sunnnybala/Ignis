@@ -19,15 +19,23 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@mastra/core": "^1.0.0-beta.17",
+    "@mastra/express": "^0.1.0-beta.12",
+    "@mastra/libsql": "^1.0.0-beta.10",
+    "@mastra/loggers": "^1.0.0-beta.3",
+    "@mastra/memory": "^1.0.0-beta.9",
+    "@mastra/observability": "^1.0.0-beta.8",
     "@supabase/supabase-js": "^2.89.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
     "express": "^5.1.0",
     "jose": "^6.1.3",
+    "mastra": "^1.0.0-beta.12",
     "openai": "^4.59.0",
     "pg": "^8.16.3",
-    "undici": "^7.16.0"
+    "undici": "^7.16.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
