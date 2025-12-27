@@ -10,3 +10,5 @@
 10) only png and csv uplaod allowed currnetlt, handle other artifacts like jpeg jpg pt etc too later on
 11) some issue with saving the files, it doesnt save when crtl+s. 
 12) filetree name of file changing, upload files in results called use uplaoded and etc not implemneted yet  
+13)change the naming of files, add the new seed files, esnure they have zero content when seeded
+14) llm can call workflow when even one core file is empty 

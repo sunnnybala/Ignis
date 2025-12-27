@@ -62,12 +62,14 @@ import { agentRouter } from './routes/agent';
 import { jobsRouter } from './routes/jobs';
 import { streamRouter } from './routes/stream';
 import { paperRouter } from './routes/paper';
+import { routerRouter } from './routes/router';
 app.use('/files', filesRouter);
 app.use('/projects', projectsRouter);
 app.use('/agent', agentRouter);
 app.use('/jobs', jobsRouter);
 app.use('/stream', streamRouter);
 app.use('/paper', paperRouter);
+app.use('/router', routerRouter);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
