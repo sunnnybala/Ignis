@@ -39,7 +39,7 @@ Important:
 - Keep miniLitReviewText under ~500 words.
 - Keep miniNoveltyAssessmentText under ~350 words.
 `.trim(),
-  model: 'openai/gpt-4o-mini',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory(),
 });
 

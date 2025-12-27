@@ -38,7 +38,7 @@ Guidance:
 - If there are no images, return an empty figurePlan.
 - Captions should be descriptive but grounded in results.txt and code; do not invent results.
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   tools: { webSearchTool },
   memory: new Memory({
     options: { lastMessages: 20 },

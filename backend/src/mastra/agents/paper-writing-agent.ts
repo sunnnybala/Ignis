@@ -56,9 +56,8 @@ Rules (strict):
 7) After changes:
    - Summarize what changed and which paths were updated.
 
-If the user asks for a full re-plan/re-write of the paper, recommend re-running the paper-plan-write workflow instead of making a massive patch here.
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   tools: { readFileTool, writeFileTool, readLatestResultsTool, getLatestResultImagesTool, webSearchTool },
   memory: new Memory({
     options: { lastMessages: 20 },

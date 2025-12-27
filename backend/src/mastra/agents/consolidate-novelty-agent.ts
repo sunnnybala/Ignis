@@ -30,7 +30,7 @@ EXPERIMENTS TO VALIDATE NOVELTY
 UNKNOWNs / WHAT TO SEARCH NEXT
 REFERENCES (from provided list)
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory(),
 });
 

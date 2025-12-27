@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { Editor, type OnMount } from '@monaco-editor/react'
 import { getFile, getFileUrl, saveFile, type FileRecord } from '@/lib/api'
@@ -25,6 +26,7 @@ function languageFor(type: FileRecord['type']): string {
 }
 
 export default function ForgeMain({ selectedFileId, projectId }: { selectedFileId?: string; projectId: string }) {
+  const qc = useQueryClient()
   const [editorValue, setEditorValue] = useState<string>('')
   const [dirty, setDirty] = useState(false)
   const [file, setFile] = useState<FileRecord | null>(null)
@@ -130,6 +132,20 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
     }
   }, [])
 
+  // When the router finishes (ChatPanel dispatches ignis:refresh-files-tree), refresh the currently open file
+  // if it's safe (not dirty). This approximates file_update streaming without complicating SSE plumbing.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const project = (ev as any)?.detail?.projectId
+      if (!project || project !== projectId) return
+      if (!selectedFileId) return
+      if (dirty) return
+      qc.invalidateQueries({ queryKey: ['file', selectedFileId] })
+    }
+    document.addEventListener('ignis:refresh-files-tree', handler as any)
+    return () => document.removeEventListener('ignis:refresh-files-tree', handler as any)
+  }, [dirty, projectId, qc, selectedFileId])
+
   const onMount: OnMount = (editor, monaco) => {
     // Ctrl/Cmd+S to save
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -200,7 +216,7 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
       </Panel>
       <PanelResizeHandle className="bg-border w-px" />
       <Panel defaultSize={30} minSize={20}>
-        <ChatPanel projectId={projectId} onFileUpdate={handleFileUpdate} />
+        <ChatPanel projectId={projectId} onFileUpdate={handleFileUpdate} endpoint="router" />
       </Panel>
     </PanelGroup>
   )

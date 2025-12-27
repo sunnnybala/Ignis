@@ -32,7 +32,7 @@ EVALUATION PLAN (datasets/metrics based on provided info; otherwise "Unknown bas
 RISKS AND MITIGATIONS
 NEXT ACTIONS (5-10 bullets in plain text)
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory({
     options: {
       lastMessages: 20,

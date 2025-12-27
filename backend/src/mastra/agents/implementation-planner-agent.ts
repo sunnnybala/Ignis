@@ -45,7 +45,7 @@ Dataset config requirements (datasetJson):
 
 If you cannot confidently select a dataset, set kaggle.dataset="" and explain what’s missing in datasetRationale and datasetJson.notes.
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   tools: { webSearchTool },
   memory: new Memory({
     options: {

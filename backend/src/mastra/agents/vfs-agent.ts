@@ -26,7 +26,7 @@ Rules:
 ${extra ? `User instructions (testing):\n${extra}` : ''}
 `.trim();
   },
-  model: 'openai/gpt-4o-mini',
+  model: 'google/gemini-3-pro-preview',
   tools: { readFileTool, writeFileTool, webSearchTool, searchPapersTool },
   memory: new Memory(),
 });

@@ -95,7 +95,7 @@ RESET CONFIRMATION RULE:
 ${overwriteBlock}
 
 CLARIFY-IDEA RULE:
-- If the user’s idea is too vague AND research_workflow_has_run_once is false, ask 2–4 concise clarifying questions and call NO primitive. This is allowed only once; after you ask once, assume missing details and proceed on the next turn.
+- If the user’s idea is too vague AND research_workflow_has_run_once is false, ask 2–4 concise clarifying questions and dont call call any primitive. This is allowed only once; after you ask once, assume missing details and proceed on the next turn.
 - Otherwise, make reasonable assumptions and proceed with exactly one allowed primitive.
 
 MIXED-INTENT RULE:
@@ -117,7 +117,7 @@ Next steps: <3–6 bullets, phase-aware (Research → Implementation → Paper)>
 Important: Your final response MUST be a complete answer in the above format.
 `.trim();
   },
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   // Layer A enforcement (requestContext-only):
   // Dynamically expose ONLY the allowed primitives derived server-side from artifact status.
   agents: ({ requestContext }) => {

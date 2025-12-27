@@ -28,7 +28,7 @@ Code requirements (experimentPy):
 - If a dependency or dataset path is unknown, add a clear TODO comment and a safe fallback that fails fast with a helpful error message.
 - Keep the script self-contained (no hidden imports from the repo unless explicitly described in the prompt).
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory({
     options: {
       lastMessages: 20,

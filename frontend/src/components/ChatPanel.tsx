@@ -33,7 +33,7 @@ export default function ChatPanel({
   projectId: string
   onFileUpdate?: (ev: { path: string; op: 'append' | 'replace'; content: string }) => void
   showActions?: boolean
-  endpoint?: 'agent' | 'paper'
+  endpoint?: 'agent' | 'paper' | 'router'
   beforeSend?: () => Promise<void>
 }) {
   const navigate = useNavigate()
@@ -108,6 +108,22 @@ export default function ChatPanel({
         )
         return
       }
+      if (ev.type === 'final') {
+        const finalText = String(ev.text ?? '')
+        // If no assistant message was created (common when backend only emits "final"),
+        // create one and set the full text.
+        if (!currentAssistantIdRef.current) {
+          const aid = crypto.randomUUID()
+          currentAssistantIdRef.current = aid
+          setMessages((prev) => [...prev, { id: aid, role: 'assistant', text: finalText }])
+          return
+        }
+        const msgId = currentAssistantIdRef.current
+        if (!msgId) return
+        // Replace with full final text (may duplicate prior streamed deltas; this keeps UI correct).
+        setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, text: finalText } : m)))
+        return
+      }
       if (ev.type === 'await_user') {
         let text = ''
         if (ev.questions && ev.questions.length > 0) {
@@ -121,6 +137,13 @@ export default function ChatPanel({
           text = 'Please provide the requested information.'
         }
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', text }])
+        return
+      }
+      if (ev.type === 'error') {
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'assistant', text: `Error: ${ev.message}` },
+        ])
         return
       }
       if (ev.type === 'phase') {
@@ -144,7 +167,8 @@ export default function ChatPanel({
       }
     }
 
-    postChatStream(endpoint, projectId, { message: text, history: prior }, onEvent, ac.signal)
+    const body = endpoint === 'router' ? { message: text } : { message: text, history: prior }
+    postChatStream(endpoint, projectId, body, onEvent, ac.signal)
       .catch((err) => {
         setMessages((prev) => [
           ...prev,
@@ -155,6 +179,12 @@ export default function ChatPanel({
         setIsStreaming(false)
         abortRef.current = null
         currentAssistantIdRef.current = null
+
+        // Router doesn't currently stream file_update events. Refresh the Forge sidebar (and any listeners)
+        // after the response completes so new/updated artifacts show up.
+        if (endpoint === 'router' && !ac.signal.aborted) {
+          document.dispatchEvent(new CustomEvent('ignis:refresh-files-tree', { detail: { projectId } }))
+        }
       })
   }
 

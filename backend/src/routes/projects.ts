@@ -44,24 +44,19 @@ projectsRouter.post('/', async (req, res) => {
 		await db.insert(projects).values({ id: projectId, userId: user.id, name });
 
 		// Seed default tree
-		const datasetJsonSkeleton = JSON.stringify(
-			{
-				source: 'kaggle',
-				kaggle: { dataset: '', unzip: true },
-				layout: { subdir: '' },
-				notes: '',
-			},
-			null,
-			2,
-		);
-		const seed: Array<{ path: string; type: typeof files.$inferInsert.type; content?: string }>= [
-			{ path: 'Lit Review/papers.txt', type: 'txt', content: '' },
-			{ path: 'Lit Review/review.md', type: 'md', content: '' },
+		// IMPORTANT: All seeded files must be empty on creation (no default templates).
+		// These paths are the canonical Ignis artifact structure used by the Mastra router/workflows.
+		const seed: Array<{ path: string; type: typeof files.$inferInsert.type; content: string }> = [
+			{ path: 'Research/lit_review.txt', type: 'txt', content: '' },
+			{ path: 'Research/novelty_assessment.txt', type: 'txt', content: '' },
+			{ path: 'Research/refined_idea.txt', type: 'txt', content: '' },
 			{ path: 'Design/design_plan.md', type: 'md', content: '' },
-			{ path: 'Design/dataset.json', type: 'txt', content: datasetJsonSkeleton },
+			// Stored as 'txt' in DB (text file semantics); content must be empty.
+			{ path: 'Design/dataset.json', type: 'txt', content: '' },
 			{ path: 'Experimentation/experiment.py', type: 'py', content: '' },
-			{ path: 'Results/results.txt', type: 'txt', content: '' },
-			{ path: 'Final Paper/paper.tex', type: 'tex', content: '' },
+			{ path: 'Experimentation/requirements.txt', type: 'txt', content: '' },
+			{ path: 'Final_Paper/paper.tex', type: 'tex', content: '' },
+			{ path: 'Final_Paper/paper_metadata.json', type: 'txt', content: '' },
 		];
 		if (isDev) {
 			// eslint-disable-next-line no-console
@@ -74,7 +69,7 @@ projectsRouter.post('/', async (req, res) => {
 		for (const f of seed) {
 			await db
 				.insert(files)
-				.values({ projectId, path: f.path, type: f.type, content: f.content ?? '' });
+				.values({ projectId, path: f.path, type: f.type, content: f.content });
 		}
 		if (isDev) {
 			// eslint-disable-next-line no-console

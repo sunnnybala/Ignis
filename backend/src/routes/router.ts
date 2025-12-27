@@ -211,7 +211,19 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
       memory: { resource: user.id, thread: projectId },
       requestContext,
     });
+    // for await (const chunk of networkRun) {
+    //   console.log(chunk.type);
+    //   if (chunk.type === "network-execution-event-step-finish") {
+    //     console.log("finish:", chunk.payload.result);
+    //   }
+    //   if (chunk.type === "routing-agent-text-delta") {
+    //     console.log("delta:", JSON.stringify(chunk, null, 2));
+    //   }
+    //   if (chunk.type === "workflow-execution-event-workflow-step-result") {
+    //     console.log(" workflow result:", JSON.stringify(chunk, null, 2));
+    //   }
 
+    // }
     // We don't rely on streaming semantics across beta versions; prefer the final result text.
     // If a stream is available, we still forward text deltas best-effort.
     let finalText: string | null = null;
@@ -223,6 +235,18 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
       for await (const chunk of iterable) {
         const type = String((chunk as any)?.type ?? '');
         if (!type) continue;
+
+        // Emit simple progress updates for workflow steps.
+        // This helps the UI feel responsive even when the router primarily streams routing-agent text.
+        if (type === 'workflow-execution-event-workflow-step-result') {
+          const stepName =
+            (typeof (chunk as any)?.payload?.payload?.stepName === 'string' && (chunk as any).payload.payload.stepName) ||
+            (typeof (chunk as any)?.payload?.payload?.id === 'string' && (chunk as any).payload.payload.id) ||
+            '';
+          if (stepName) {
+            sse.write({ type: 'delta', text: `\n${stepName} workflow has finished execution\n` });
+          }
+        }
 
         // Best-effort text streaming across event variants.
         if (type.includes('text-delta')) {
@@ -247,10 +271,13 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
     // Fallback: await explicit result promise if present.
     if (!finalText) {
       const r = (networkRun as any)?.result ? await (networkRun as any).result : null;
+      // Mastra WorkflowResult<...> shape is { status: 'success', result: <output> } on success.
+      const rr = (r && typeof r === 'object' && 'result' in (r as any)) ? (r as any).result : null;
       finalText =
         (typeof r === 'string' && r) ||
         (typeof r?.text === 'string' && r.text) ||
-        (typeof r?.result?.text === 'string' && r.result.text) ||
+        (typeof rr === 'string' && rr) ||
+        (typeof rr?.text === 'string' && rr.text) ||
         null;
     }
 

@@ -11,6 +11,11 @@ export type ChatDeltaEvent = {
 	text: string;
 };
 
+export type ChatFinalEvent = {
+	type: 'final';
+	text: string;
+};
+
 export type ChatFileUpdateEvent = {
 	type: 'file_update';
 	path: string;
@@ -42,12 +47,19 @@ export type ChatActionRequestEvent = {
 	rationale: string;
 };
 
+export type ChatErrorEvent = {
+	type: 'error';
+	message: string;
+};
+
 export type ChatSseEvent =
 	| ChatDeltaEvent
+	| ChatFinalEvent
 	| ChatFileUpdateEvent
 	| ChatPhaseEvent
 	| ChatProposedPhaseEvent
 	| ChatAwaitUserEvent
-	| ChatActionRequestEvent;
+	| ChatActionRequestEvent
+	| ChatErrorEvent;
 
 

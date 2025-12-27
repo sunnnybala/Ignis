@@ -53,6 +53,8 @@ export const searchPapersTool = createTool({
     cursor: z.string().optional().describe('Pagination cursor (MVP: numeric offset as string)'),
   }),
   outputSchema: z.object({
+    ok: z.boolean().describe('Whether the tool call succeeded. If false, results will be empty and error will be set.'),
+    errorMessage: z.string().optional().describe('Error message if ok=false'),
     results: z.array(
       z.object({
         title: z.string(),
@@ -85,13 +87,40 @@ export const searchPapersTool = createTool({
     const timeoutMs = Number(process.env.SEMANTIC_SCHOLAR_TIMEOUT_MS || 15000);
     const signal = withTimeout(toolContext?.abortSignal, Number.isFinite(timeoutMs) ? timeoutMs : 15000);
 
-    const resp = await fetch(url.toString(), { method: 'GET', headers, signal });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new Error(`Semantic Scholar search failed (${resp.status}): ${text || resp.statusText}`);
+    let resp: Response | null = null;
+    let json: S2SearchResponse | null = null;
+    try {
+      resp = await fetch(url.toString(), { method: 'GET', headers, signal });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        const msg = `Semantic Scholar search failed (${resp.status}): ${text || resp.statusText}`;
+        // Do NOT throw: return a structured failure so workflows/agents can handle it.
+        // eslint-disable-next-line no-console
+        console.error('[tool.search_papers] failed', {
+          status: resp.status,
+          query: inputData.query,
+          offset,
+          limit,
+          hasApiKey: Boolean(apiKey),
+          message: msg,
+        });
+      return { ok: false, errorMessage: msg, results: [], nextCursor: null };
+      }
+      json = (await resp.json()) as S2SearchResponse;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error('[tool.search_papers] failed', {
+        query: inputData.query,
+        offset,
+        limit,
+        hasApiKey: Boolean(apiKey),
+        message: msg,
+      });
+    return { ok: false, errorMessage: msg, results: [], nextCursor: null };
     }
 
-    const json = (await resp.json()) as S2SearchResponse;
+    const jsonSafe = json ?? {};
     const raw = Array.isArray(json.data) ? json.data : [];
 
     const candidates = raw
@@ -122,13 +151,13 @@ export const searchPapersTool = createTool({
     // - Prefer explicit `next` if present
     // - Else compute from total/offset/limit if total is present
     const next =
-      typeof json.next === 'number' && Number.isFinite(json.next)
-        ? String(Math.max(0, Math.trunc(json.next)))
-        : typeof json.total === 'number' && Number.isFinite(json.total) && offset + limit < json.total
+      typeof jsonSafe.next === 'number' && Number.isFinite(jsonSafe.next)
+        ? String(Math.max(0, Math.trunc(jsonSafe.next)))
+        : typeof jsonSafe.total === 'number' && Number.isFinite(jsonSafe.total) && offset + limit < jsonSafe.total
           ? String(offset + limit)
           : null;
 
-    return { results, nextCursor: next };
+    return { ok: true, results, nextCursor: next };
   },
 });
 

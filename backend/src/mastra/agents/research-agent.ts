@@ -44,7 +44,7 @@ Rules (strict):
 7) Output to user:
 
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   tools: { readFileTool, writeFileTool, searchPapersTool },
   memory: new Memory({
     options: {

@@ -26,7 +26,7 @@ Examples (format only):
 {"query":"chest x-ray pneumonia detection self-supervised learning domain adaptation label noise robust training"}
 {"query":"diffusion models medical imaging segmentation uncertainty calibration active learning"}
 `.trim(),
-  model: 'openai/gpt-4o-mini',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory(),
 });
 

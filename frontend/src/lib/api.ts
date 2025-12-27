@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabaseClient'
+import { getAuthHeaders } from '@/lib/authHeaders'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:4000'
 
@@ -6,21 +7,6 @@ function warnApi(event: string, fields: Record<string, unknown>) {
   // Keep this as warn even in prod; it helps diagnose auth/config issues without leaking secrets.
   // eslint-disable-next-line no-console
   console.warn(`[warn] api.${event}`, fields)
-}
-
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.auth.getSession()
-    if (error) return null
-    return data.session?.access_token ?? null
-  } catch {
-    return null
-  }
-}
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const token = await getAccessToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 function redirectToLoginIfNeeded() {
@@ -49,7 +35,7 @@ async function handleErrorResponse(resp: Response, path: string): Promise<never>
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const auth = await authHeaders()
+  const auth = await getAuthHeaders()
   const resp = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...auth, ...(init?.headers || {}) },
     ...init,
@@ -59,7 +45,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function apiBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const auth = await authHeaders()
+  const auth = await getAuthHeaders()
   const resp = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { ...auth, ...(init?.headers || {}) },

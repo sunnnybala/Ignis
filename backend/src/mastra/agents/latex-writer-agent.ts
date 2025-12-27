@@ -36,7 +36,7 @@ LaTeX requirements:
 - Reference figures using the provided figure plan; do not invent images.
 - Do not invent numerical results; only summarize what appears in results.txt.
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory({
     options: { lastMessages: 20 },
   }),

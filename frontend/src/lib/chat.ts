@@ -1,4 +1,5 @@
 import type { ChatSseEvent } from './chatTypes'
+import { getAuthHeaders } from '@/lib/authHeaders'
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || 'http://localhost:4000'
 
@@ -11,17 +12,19 @@ export type ChatHistoryItem = { role: 'user' | 'assistant'; text: string }
  * - Heartbeats are sent as SSE comments (lines starting with ':'), which are ignored.
  */
 export async function postChatStream(
-  endpointBase: 'agent' | 'paper',
+  endpointBase: 'agent' | 'paper' | 'router',
   projectId: string,
   body: { message: string; history?: ChatHistoryItem[] },
   onEvent: (ev: ChatSseEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const auth = await getAuthHeaders()
   const resp = await fetch(`${API_BASE}/${endpointBase}/${projectId}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      ...auth,
     },
     body: JSON.stringify(body),
     signal,

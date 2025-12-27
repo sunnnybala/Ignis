@@ -46,7 +46,7 @@ Rules (strict):
 7) After changes:
    - Briefly summarize what changed and which paths were updated.
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   tools: { readFileTool, writeFileTool, webSearchTool, readLatestResultsTool },
   memory: new Memory({
     options: {

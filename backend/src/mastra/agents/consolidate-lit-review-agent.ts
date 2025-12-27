@@ -28,7 +28,7 @@ Rules:
   "REFERENCES (from provided list)"
 - Keep it concise but complete (~800-1500 words unless told otherwise).
 `.trim(),
-  model: 'openai/gpt-4o',
+  model: 'google/gemini-3-pro-preview',
   memory: new Memory(),
 });
 
