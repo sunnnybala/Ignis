@@ -50,6 +50,7 @@ projectsRouter.post('/', async (req, res) => {
 			{ path: 'Research/lit_review.txt', type: 'txt', content: '' },
 			{ path: 'Research/novelty_assessment.txt', type: 'txt', content: '' },
 			{ path: 'Research/refined_idea.txt', type: 'txt', content: '' },
+			{ path: 'Results/results.txt', type: 'txt', content: '' },
 			{ path: 'Design/design_plan.md', type: 'md', content: '' },
 			// Stored as 'txt' in DB (text file semantics); content must be empty.
 			{ path: 'Design/dataset.json', type: 'txt', content: '' },
