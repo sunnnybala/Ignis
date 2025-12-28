@@ -215,7 +215,7 @@ export default function ChatPanel({
         ...prev,
         { id: crypto.randomUUID(), role: 'assistant', text: `Experiment enqueued. jobId=${res.jobId}` },
       ])
-      pollJob(res.jobId)
+      pollJob(res.jobId, res.runId)
     },
     onError: () => {
       setMessages((prev) => [
@@ -226,7 +226,7 @@ export default function ChatPanel({
   })
 
   // Poll job status and refresh the file tree when done
-  const pollJob = (jobId: string) => {
+  const pollJob = (jobId: string, runId?: string) => {
     const start = Date.now()
     const interval = setInterval(async () => {
       try {
@@ -241,8 +241,8 @@ export default function ChatPanel({
               role: 'assistant',
               text:
                 j.status === 'completed'
-                  ? `Experiment completed. Check Results/${jobId}/`
-                  : `Experiment failed. See Results/${jobId}/results.txt`,
+                  ? `Experiment completed. Check Results/${runId || jobId}/`
+                  : `Experiment failed. See Results/${runId || jobId}/results.txt`,
             },
           ])
           // Invalidate files tree query so ForgeSidebar refreshes

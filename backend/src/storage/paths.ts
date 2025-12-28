@@ -1,5 +1,5 @@
-export function buildResultKey(projectId: string, jobId: string, fileName: string): string {
-	return `projects/${projectId}/results/${jobId}/${sanitizeFileName(fileName)}`;
+export function buildResultKey(projectId: string, runId: string, fileName: string): string {
+	return `projects/${projectId}/results/${runId}/${sanitizeFileName(fileName)}`;
 }
 
 export function buildPaperKey(projectId: string, jobId: string): string {

@@ -248,6 +248,7 @@ def _upload_to_supabase_signed_url(
 def _upload_artifacts(
     traceId: str,
     jobId: str,
+    runId: str,
     projectId: str,
     presign_url: str,
     job_token: str,
@@ -277,7 +278,9 @@ def _upload_artifacts(
 
             out.append(
                 {
-                    "path": f"Results/{jobId}/{p.name}",
+                    # IMPORTANT: Node persists artifacts into the DB "virtual filesystem" under Results/<runId>/...
+                    # jobId remains the stable identifier for callbacks/auth; runId is only the results directory name.
+                    "path": f"Results/{runId}/{p.name}",
                     "storageKey": key,
                     "mimeType": mime,
                     "sizeBytes": len(data),
@@ -344,7 +347,7 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     POST /run
     Expects payload from Node:
-      { traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl }
+      { traceId, jobId, runId, projectId, jobToken, experimentPy, requirementsTxt, datasetJson, presignUrl, completeUrl }
     """
     # Dynamic import so local editors without FastAPI installed don't warn/error;
     # Modal runtime image includes FastAPI (required for @fastapi_endpoint).
@@ -353,13 +356,15 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     traceId = str(payload.get("traceId") or "").strip() or str(_now_ms())
     jobId = str(payload.get("jobId") or "").strip()
+    runId = str(payload.get("runId") or "").strip()
     projectId = str(payload.get("projectId") or "").strip()
 
-    _log("run.received", traceId=traceId, jobId=jobId, projectId=projectId)
+    _log("run.received", traceId=traceId, jobId=jobId, runId=runId, projectId=projectId)
 
     # Pull required fields
     jobToken = str(payload.get("jobToken") or "").strip()
     experimentPy = str(payload.get("experimentPy") or "")
+    requirementsTxt = str(payload.get("requirementsTxt") or "")
     datasetJson = str(payload.get("datasetJson") or "")
     presignUrl = str(payload.get("presignUrl") or "").strip()
     completeUrl = str(payload.get("completeUrl") or "").strip()
@@ -367,6 +372,8 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Fast validation only (ack quickly). Long work happens in execute_job().
     if not jobId or not projectId or not jobToken:
         raise HTTPException(status_code=400, detail="Missing required identifiers (jobId/projectId/jobToken)")
+    if not runId:
+        raise HTTPException(status_code=400, detail="Missing required identifier (runId)")
     if not experimentPy.strip():
         raise HTTPException(status_code=400, detail="experimentPy is empty")
     if not datasetJson.strip():
@@ -385,6 +392,7 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
         "run.validation.ok",
         traceId=traceId,
         jobId=jobId,
+        runId=runId,
         projectId=projectId,
         source="kaggle",
         slug=kaggle_slug,
@@ -393,7 +401,18 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # Spawn long-running work asynchronously and return an ack immediately.
-    fc = execute_job.spawn(traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl)
+    fc = execute_job.spawn(
+        traceId,
+        jobId,
+        runId,
+        projectId,
+        jobToken,
+        experimentPy,
+        requirementsTxt,
+        datasetJson,
+        presignUrl,
+        completeUrl,
+    )
     _log("run.ack", traceId=traceId, jobId=jobId, projectId=projectId, function_call_id=str(getattr(fc, "object_id", "")))
     return {"ok": True, "jobId": jobId, "traceId": traceId, "queued": True}
 
@@ -407,9 +426,11 @@ def run(payload: Dict[str, Any]) -> Dict[str, Any]:
 def execute_job(
     traceId: str,
     jobId: str,
+    runId: str,
     projectId: str,
     jobToken: str,
     experimentPy: str,
+    requirementsTxt: str,
     datasetJson: str,
     presignUrl: str,
     completeUrl: str,
@@ -421,7 +442,7 @@ def execute_job(
     - artifact upload
     - callback to Node /complete
     """
-    _log("execute.start", traceId=traceId, jobId=jobId, projectId=projectId)
+    _log("execute.start", traceId=traceId, jobId=jobId, runId=runId, projectId=projectId)
 
     exit_code = 1
     results_text = ""
@@ -433,6 +454,7 @@ def execute_job(
             "dataset.parsed",
             traceId=traceId,
             jobId=jobId,
+            runId=runId,
             projectId=projectId,
             source="kaggle",
             slug=kaggle_slug,
@@ -450,6 +472,65 @@ def execute_job(
         with tempfile.TemporaryDirectory(prefix=f"ignis-{jobId}-") as td:
             workdir = Path(td)
             (workdir / "experiment.py").write_text(experimentPy, encoding="utf-8")
+
+            # Install per-project dependencies at runtime (from Experimentation/requirements.txt in VFS).
+            # requirementsTxt is expected to be ONLY package names (one per line), no versions/urls/flags.
+            req_raw = (requirementsTxt or "").strip()
+            if req_raw:
+                # Sanitize: strip comments/empties; reject suspicious lines.
+                lines: List[str] = []
+                for ln in req_raw.splitlines():
+                    s = ln.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    # Reject anything that isn't "just a package name"
+                    bad = any(
+                        s.startswith(pfx)
+                        for pfx in ["-r", "--", "-e", "git+", "http://", "https://", "file:"]
+                    )
+                    bad = bad or ("==" in s) or (">=" in s) or ("<=" in s) or ("~=" in s) or ("@" in s) or ("/" in s)
+                    if bad:
+                        raise RuntimeError(
+                            f"Invalid requirements line (must be a bare package name): {s!r}"
+                        )
+                    lines.append(s)
+
+                if lines:
+                    (workdir / "requirements.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    _log(
+                        "pip.install.start",
+                        traceId=traceId,
+                        jobId=jobId,
+                        projectId=projectId,
+                        count=len(lines),
+                        pkgs=lines[:30],
+                    )
+                    t1 = time.time()
+                    pip_proc = subprocess.run(
+                        ["python", "-m", "pip", "install", "--no-cache-dir", "-r", "requirements.txt"],
+                        cwd=str(workdir),
+                        capture_output=True,
+                        text=True,
+                    )
+                    ms_pip = int((time.time() - t1) * 1000)
+                    _log(
+                        "pip.install.end",
+                        traceId=traceId,
+                        jobId=jobId,
+                        projectId=projectId,
+                        ms=ms_pip,
+                        code=pip_proc.returncode,
+                    )
+                    if pip_proc.returncode != 0:
+                        raise RuntimeError(
+                            _truncate(
+                                "pip install failed:\n\n=== STDOUT ===\n"
+                                + (pip_proc.stdout or "")
+                                + "\n\n=== STDERR ===\n"
+                                + (pip_proc.stderr or ""),
+                                8000,
+                            )
+                        )
 
             _log("experiment.exec.start", traceId=traceId, jobId=jobId, projectId=projectId, data_dir=data_dir)
             t0 = time.time()
@@ -483,6 +564,7 @@ def execute_job(
                 "artifact.scan",
                 traceId=traceId,
                 jobId=jobId,
+                runId=runId,
                 projectId=projectId,
                 count=len(artifacts),
                 names=[p.name for p in artifacts][:50],
@@ -491,7 +573,7 @@ def execute_job(
             # Upload artifacts (png/csv). Non-fatal: failures append a warning to results_text.
             if artifacts:
                 try:
-                    artifacts_meta = _upload_artifacts(traceId, jobId, projectId, presignUrl, jobToken, artifacts)
+                    artifacts_meta = _upload_artifacts(traceId, jobId, runId, projectId, presignUrl, jobToken, artifacts)
                 except Exception as e:
                     msg = f"Artifact upload failed (non-fatal): {type(e).__name__}: {e}"
                     _log("artifact.upload.failed", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 2000))
@@ -499,7 +581,7 @@ def execute_job(
 
     except Exception as e:
         msg = f"Runner error: {type(e).__name__}: {str(e)}"
-        _log("execute.error", traceId=traceId, jobId=jobId, projectId=projectId, message=_truncate(msg, 4000))
+        _log("execute.error", traceId=traceId, jobId=jobId, runId=runId, projectId=projectId, message=_truncate(msg, 4000))
         results_text = _truncate(results_text + "\n\n" + msg + "\n", MAX_LOG_CHARS)
         exit_code = 1
     finally:
@@ -514,6 +596,6 @@ def execute_job(
                 message=_truncate(f"{type(e).__name__}: {e}", 4000),
             )
 
-    _log("execute.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=exit_code, artifactsCount=len(artifacts_meta))
+    _log("execute.end", traceId=traceId, jobId=jobId, runId=runId, projectId=projectId, exitCode=exit_code, artifactsCount=len(artifacts_meta))
 
 

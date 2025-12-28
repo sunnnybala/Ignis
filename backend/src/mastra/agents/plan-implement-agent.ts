@@ -26,6 +26,7 @@ Core artifacts (source of truth):
 - Design/design_plan.md
 - Design/dataset.json
 - Experimentation/experiment.py
+- Experimentation/requirements.txt
 
 Rules (strict):
 1) Read-before-write:
@@ -36,6 +37,8 @@ Rules (strict):
    - Do not rewrite everything unless explicitly asked.
 3) Dataset config correctness:
    - Keep Design/dataset.json as valid JSON. If you change the dataset, update BOTH the plan and experiment.py accordingly.
+3b) Requirements correctness:
+   - If you add/remove imports or libraries in experiment.py, reconcile Experimentation/requirements.txt so Modal can install the right packages at runtime.
 4) Web search policy:
    - Use web_search only when needed (e.g., to identify a Kaggle dataset slug or confirm expected dataset folder layout).
 5) Writing discipline:

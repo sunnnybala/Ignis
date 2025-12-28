@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { searchPapersTool } from '../tools/search-papers';
 import { writeFileTool } from '../tools/write-file';
+import { logger } from '../../utils/logger';
 
 // NOTE: We intentionally do NOT import agents directly here.
 // We use `mastra.getAgent(...)` inside steps so the workflow runs with the Mastra runtime instance.
@@ -36,6 +37,13 @@ function requireIdsFromRequestContext(requestContext: any): { userId: string; pr
   return { userId, projectId };
 }
 
+function traceMeta(requestContext: any): { traceId: string | null; userId?: string; projectId?: string } {
+  const traceId = requestContext?.get?.('traceId') ? String(requestContext.get('traceId')) : null;
+  const userId = requestContext?.get?.('userId') ? String(requestContext.get('userId')) : undefined;
+  const projectId = requestContext?.get?.('projectId') ? String(requestContext.get('projectId')) : undefined;
+  return { traceId, userId, projectId };
+}
+
 const paperSchema = z.object({
   title: z.string(),
   authors: z.array(z.string()).default([]),
@@ -44,7 +52,7 @@ const paperSchema = z.object({
   abstract: z.string().optional(),
   url: z.string().url().optional(),
   doi: z.string().optional(),
-  source: z.literal('semantic_scholar'),
+  source: z.enum(['semantic_scholar', 'exa']),
 });
 
 const pairSchema = z.object({
@@ -101,6 +109,11 @@ const buildQueryStep = createStep({
     if (!inputData?.idea) throw new Error('Missing idea');
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
 
+    logger.info('workflow.novelty_refine.build_query.start', {
+      ...traceMeta(requestContext),
+      ideaChars: String(inputData.idea || '').length,
+    });
+
     const { userId, projectId } = requireIdsFromRequestContext(requestContext);
 
     const querySchema = z.object({ query: z.string().min(1).max(500) });
@@ -120,6 +133,7 @@ const buildQueryStep = createStep({
     const query = String(obj?.query ?? '').trim();
     if (!query) throw new Error('Query builder agent did not return a valid query');
 
+    logger.info('workflow.novelty_refine.build_query.finish', { ...traceMeta(requestContext), queryChars: query.length });
     return { idea: inputData.idea, query };
   },
 });
@@ -146,8 +160,16 @@ const fetchPapersStep = createStep({
   execute: async ({ inputData, requestContext }: any) => {
     const { nPapers, concurrency } = getConfigFromEnv();
 
+    logger.info('workflow.novelty_refine.fetch_papers.start', {
+      ...traceMeta(requestContext),
+      queryChars: String(inputData.query || '').length,
+      nPapers,
+      concurrency,
+    });
+
     const collected: Array<z.infer<typeof paperSchema>> = [];
     let cursor: string | undefined = undefined;
+    let pages = 0;
 
     while (collected.length < nPapers) {
       const remaining = nPapers - collected.length;
@@ -157,6 +179,7 @@ const fetchPapersStep = createStep({
         { query: inputData.query, limit, cursor },
         { requestContext },
       );
+      pages += 1;
 
       const results = Array.isArray(page?.results) ? page.results : [];
       for (const r of results) {
@@ -170,6 +193,11 @@ const fetchPapersStep = createStep({
       cursor = next;
     }
 
+    logger.info('workflow.novelty_refine.fetch_papers.finish', {
+      ...traceMeta(requestContext),
+      pages,
+      papersCollected: collected.length,
+    });
     return {
       idea: inputData.idea,
       query: inputData.query,
@@ -203,6 +231,10 @@ const pairPapersStep = createStep({
     pairs: z.array(pairSchema),
   }),
   execute: async ({ inputData }) => {
+    // No requestContext here (pure step). Keep logs lightweight.
+    logger.info('workflow.novelty_refine.pair_papers.start', {
+      papersCount: inputData?.papers?.length,
+    });
     const papers = Array.isArray(inputData?.papers) ? inputData.papers : [];
     const evenCount = Math.floor(papers.length / 2) * 2;
     const usable = papers.slice(0, evenCount);
@@ -215,6 +247,11 @@ const pairPapersStep = createStep({
         paperB: usable[i + 1],
       });
     }
+
+    logger.info('workflow.novelty_refine.pair_papers.finish', {
+      papersCount: inputData?.papers?.length,
+      pairsCount: pairs.length,
+    });
 
     return { ...inputData, pairs };
   },
@@ -232,6 +269,12 @@ const miniReviewWorkerStep = createStep({
   inputSchema: workerInputSchema,
   outputSchema: miniReportSchema,
   execute: async ({ inputData, mastra }: any) => {
+    logger.info('workflow.novelty_refine.mini_review_worker.start', {
+      pairId: inputData.pairId,
+      ideaChars: String(inputData.idea || '').length,
+      paperAChars: String(inputData.paperA.title || '').length,
+      paperBChars: String(inputData.paperB.title || '').length,
+    });
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
     const agent = mastra.getAgent('miniReviewWorkerAgent');
     if (!agent) throw new Error('miniReviewWorkerAgent not found (is it registered in mastra/index.ts?)');
@@ -259,17 +302,80 @@ const miniReviewWorkerStep = createStep({
       paperBlock('B', inputData.paperB),
     ].join('\n');
 
-    const res = await agent.generate(prompt, {
-      structuredOutput: { schema: miniReportSchema, errorStrategy: 'strict' },
-    } as any);
+    try {
+      // Stream the worker output so we can:
+      // - see partial progress (via logs, and potentially forwarded through Mastra's network stream)
+      // - more clearly localize timeouts/errors to a specific pair
+      const response = await (agent as any).stream([{ role: 'user', content: prompt }] as any);
 
-    const parsed = miniReportSchema.safeParse((res as any)?.object);
-    if (!parsed.success) {
-      throw new Error('miniReviewWorkerAgent returned invalid structured output');
+      let raw = '';
+      let lastLogAt = 0;
+      let deltaChars = 0;
+
+      for await (const chunk of response.textStream as AsyncIterable<string>) {
+        raw += chunk;
+        deltaChars += chunk.length;
+
+        const now = Date.now();
+        if (now - lastLogAt > 1500) {
+          lastLogAt = now;
+          logger.debug('workflow.novelty_refine.mini_review_worker.delta', {
+            pairId: inputData.pairId,
+            deltaChars,
+          });
+        }
+      }
+
+      const trimmed = raw.trim();
+
+      // Parse JSON. Be defensive in case the model wraps output despite instructions.
+      let obj: unknown = null;
+      try {
+        obj = JSON.parse(trimmed);
+      } catch {
+        const start = trimmed.indexOf('{');
+        const end = trimmed.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+          obj = JSON.parse(trimmed.slice(start, end + 1));
+        } else {
+          throw new Error('miniReviewWorkerAgent stream did not return parseable JSON');
+        }
+      }
+
+      const parsed = miniReportSchema.safeParse(obj);
+      if (!parsed.success) {
+        throw new Error('miniReviewWorkerAgent returned invalid structured output');
+      }
+
+      logger.info('workflow.novelty_refine.mini_review_worker.finish', {
+        pairId: inputData.pairId,
+        miniLitReviewTextChars: String(parsed.data.miniLitReviewText || '').length,
+        miniNoveltyAssessmentTextChars: String(parsed.data.miniNoveltyAssessmentText || '').length,
+      });
+
+      // Ensure pairId is preserved even if the model forgets.
+      return { ...parsed.data, pairId: inputData.pairId };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('workflow.novelty_refine.mini_review_worker.error', {
+        pairId: inputData.pairId,
+        message,
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+
+      // IMPORTANT: Do not throw. If we throw inside .foreach(), one pair failure can abort the entire fan-out.
+      // Instead, return a "best-effort" report that preserves schema so consolidation can still proceed.
+      return {
+        pairId: inputData.pairId,
+        miniLitReviewText: `Worker failed for ${inputData.pairId}. Error: ${message}`,
+        miniNoveltyAssessmentText: `Worker failed for ${inputData.pairId}. Error: ${message}`,
+        keyTakeaways: [],
+        overlapSignals: [],
+        noveltySignals: [],
+        risks: [`worker_error: ${message}`],
+        citations: [],
+      };
     }
-
-    // Ensure pairId is preserved even if the model forgets.
-    return { ...parsed.data, pairId: inputData.pairId };
   },
 });
 
@@ -293,6 +399,16 @@ const consolidateLitReviewAndWriteStep = createStep({
     litReviewText: z.string(),
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
+    logger.info('workflow.novelty_refine.consolidate_lit_review_and_write.start', {
+      ...traceMeta(requestContext),
+      ideaChars: String(inputData.idea || '').length,
+      queryChars: String(inputData.query || '').length,
+      nPapers: inputData.nPapers,
+      concurrency: inputData.concurrency,
+      papersCount: inputData.papers?.length,
+      pairsCount: inputData.pairs?.length,
+      miniReportsCount: inputData.miniReports?.length,
+    });
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
     const agent = mastra.getAgent('consolidateLitReviewAgent');
     if (!agent) throw new Error('consolidateLitReviewAgent not found (is it registered in mastra/index.ts?)');
@@ -336,6 +452,11 @@ const consolidateLitReviewAndWriteStep = createStep({
       { path: OUTPUT_PATHS.litReview, op: 'replace', content: litReviewText },
       { requestContext },
     );
+
+    logger.info('workflow.novelty_refine.consolidate_lit_review_and_write.finish', {
+      ...traceMeta(requestContext),
+      litReviewTextChars: litReviewText.length,
+    });
 
     return { litReviewPath: OUTPUT_PATHS.litReview, litReviewText };
   },
@@ -440,6 +561,12 @@ const refineIdeaAndWriteStep = createStep({
     refinedIdeaText: z.string(),
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
+    logger.info('workflow.novelty_refine.refine_idea_and_write.start', {
+      ...traceMeta(requestContext),
+      ideaChars: String(inputData.idea || '').length,
+      litReviewTextChars: String(inputData.litReviewText || '').length,
+      noveltyAssessmentTextChars: String(inputData.noveltyAssessmentText || '').length,
+    });
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
     const agent = mastra.getAgent('refineIdeaAgent');
     if (!agent) throw new Error('refineIdeaAgent not found (is it registered in mastra/index.ts?)');
@@ -468,6 +595,11 @@ const refineIdeaAndWriteStep = createStep({
       { path: OUTPUT_PATHS.refinedIdea, op: 'replace', content: refinedIdeaText },
       { requestContext },
     );
+
+    logger.info('workflow.novelty_refine.refine_idea_and_write.finish', {
+      ...traceMeta(requestContext),
+      refinedIdeaTextChars: refinedIdeaText.length,
+    });
 
     return { litReviewPath: inputData.litReviewPath, noveltyAssessmentPath: inputData.noveltyAssessmentPath, refinedIdeaPath: OUTPUT_PATHS.refinedIdea, refinedIdeaText };
   },

@@ -25,6 +25,7 @@ const PATHS = {
   designPlan: 'Design/design_plan.md',
   datasetConfig: 'Design/dataset.json',
   experimentPy: 'Experimentation/experiment.py',
+  requirementsTxt: 'Experimentation/requirements.txt',
 } as const;
 
 const plannerOutputSchema = z.object({
@@ -45,6 +46,8 @@ const plannerOutputSchema = z.object({
 
 const coderOutputSchema = z.object({
   experimentPy: z.string().min(1),
+  // Allow empty: if the script uses only stdlib, requirements can be blank.
+  requirementsTxt: z.string(),
 });
 
 /**
@@ -125,7 +128,8 @@ const planAndDatasetStep = createStep({
  */
 const generateExperimentStep = createStep({
   id: 'generate_experiment',
-  description: 'Generate Experimentation/experiment.py from refined idea + design plan + dataset config and write to VFS',
+  description:
+    'Generate Experimentation/experiment.py + Experimentation/requirements.txt from refined idea + design plan + dataset config and write to VFS',
   inputSchema: z.object({
     designPlanMd: z.string(),
     datasetJsonText: z.string(),
@@ -135,6 +139,7 @@ const generateExperimentStep = createStep({
     designPlanMd: z.string(),
     datasetJsonText: z.string(),
     experimentPy: z.string(),
+    requirementsTxt: z.string(),
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
@@ -156,7 +161,9 @@ const generateExperimentStep = createStep({
     if (!agent) throw new Error('experimentCoderAgent not found (is it registered in mastra/index.ts?)');
 
     const prompt = [
-      `You are generating ONE output for this project: Experimentation/experiment.py`,
+      `You are generating TWO outputs for this project:`,
+      `1) ${PATHS.experimentPy}`,
+      `2) ${PATHS.requirementsTxt}`,
       ``,
       `REFINED IDEA (from ${PATHS.refinedIdea}):`,
       refinedIdeaText,
@@ -166,6 +173,8 @@ const generateExperimentStep = createStep({
       ``,
       `DATASET CONFIG (from ${PATHS.datasetConfig}):`,
       datasetConfigText,
+      ``,
+      `Important: requirements.txt must list ONLY package names (one per line), no versions.`,
     ].join('\n');
 
     const res = await agent.generate(prompt, {
@@ -179,8 +188,14 @@ const generateExperimentStep = createStep({
     const experimentPy = String(parsed.data.experimentPy ?? '').trim();
     if (!experimentPy) throw new Error('experimentCoderAgent returned empty experimentPy');
 
+    const requirementsTxt = String(parsed.data.requirementsTxt ?? '');
+
     await (writeFileTool as any).execute(
       { path: PATHS.experimentPy, op: 'replace', content: experimentPy },
+      { requestContext },
+    );
+    await (writeFileTool as any).execute(
+      { path: PATHS.requirementsTxt, op: 'replace', content: requirementsTxt },
       { requestContext },
     );
 
@@ -189,6 +204,7 @@ const generateExperimentStep = createStep({
       designPlanMd: String(inputData.designPlanMd ?? '').trim(),
       datasetJsonText: String(inputData.datasetJsonText ?? '').trim(),
       experimentPy,
+      requirementsTxt,
     };
   },
 });
@@ -202,6 +218,7 @@ export const planImplementWorkflow = createWorkflow({
     designPlanMd: z.string(),
     datasetJsonText: z.string(),
     experimentPy: z.string(),
+    requirementsTxt: z.string(),
   }),
 })
   .then(planAndDatasetStep)

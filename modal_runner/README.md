@@ -5,7 +5,7 @@ This directory contains the **Modal execution plane** for running project `exper
 ## What it does
 
 - Exposes `POST /run` on Modal.
-- Input comes from the Node backend: `{ traceId, jobId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl }`.
+- Input comes from the Node backend: `{ traceId, jobId, runId, projectId, jobToken, experimentPy, datasetJson, presignUrl, completeUrl }`.
 - Downloads Kaggle dataset per `datasetJson` and caches it in a **single shared Modal Volume**.
 - Runs `experiment.py --data_dir <cached_dataset_path>`.
 - Uploads binary artifacts (`.png`, `.csv`) to Supabase using **Node-issued presigned upload URLs**.

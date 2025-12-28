@@ -11,6 +11,7 @@ import { fetch } from 'undici';
 import { parseDatasetConfig } from '../utils/datasetConfig';
 import { getAuthedUser, getOwnedJob, getOwnedProject, logAuthzDenied } from '../authz/ownership';
 import { logger } from '../utils/logger';
+import { formatRunIdFromDateUtc } from '../utils/runId';
 
 export const jobsRouter = Router();
 
@@ -41,6 +42,12 @@ function getTraceId(job: any): string | null {
 	const meta = getJobMeta(job);
 	const t = meta?.traceId;
 	return typeof t === 'string' && t.trim().length > 0 ? t.trim() : null;
+}
+
+function getRunId(job: any): string | null {
+	const meta = getJobMeta(job);
+	const r = meta?.runId;
+	return typeof r === 'string' && r.trim().length > 0 ? r.trim() : null;
 }
 
 function isAllowedResultExt(fileName: string): boolean {
@@ -114,13 +121,20 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		}
 
 		const jobId = crypto.randomUUID();
-		await db.insert(jobs).values({
-			id: jobId,
-			projectId,
-			type: 'experiment_run',
-			status: 'queued',
-			metadata: { traceId, jobToken },
-		});
+		const inserted = await db
+			.insert(jobs)
+			.values({
+				id: jobId,
+				projectId,
+				type: 'experiment_run',
+				status: 'queued',
+				metadata: { traceId, jobToken },
+			})
+			.returning({ createdAt: jobs.createdAt });
+		const createdAt = inserted[0]?.createdAt instanceof Date ? inserted[0].createdAt : new Date();
+		const runId = formatRunIdFromDateUtc(createdAt);
+		// Persist runId into metadata so downstream endpoints (presign/complete) can look it up cheaply.
+		await db.update(jobs).set({ metadata: { traceId, jobToken, runId } as any }).where(eq(jobs.id, jobId));
 		logger.info('job.enqueue', { requestId: req.requestId || null, traceId, jobId, projectId, userId: user.id });
 
 		if (isDev) {
@@ -131,6 +145,8 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
 		const exp = all.find((f) => f.path === 'Experimentation/experiment.py' && f.type === 'py')?.content ?? '';
 		const datasetJson = all.find((f) => f.path === 'Design/dataset.json' && f.type === 'txt')?.content ?? '';
+		const requirementsTxt =
+			all.find((f) => f.path === 'Experimentation/requirements.txt' && f.type === 'txt')?.content ?? '';
 
 		if (!exp || exp.trim().length === 0) {
 			if (isDev) {
@@ -159,6 +175,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 				projectId,
 				expLen: exp.length,
 				datasetLen: datasetJson.length,
+				requirementsLen: requirementsTxt.length,
 				datasetParseOk: parsed.ok,
 				datasetError: parsed.ok ? undefined : parsed.error,
 				kaggleDataset: parsed.ok ? parsed.value.kaggle.dataset : undefined,
@@ -181,9 +198,11 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		const payload = {
 			traceId,
 			jobId,
+			runId,
 			projectId,
 			jobToken,
 			experimentPy: exp,
+			requirementsTxt,
 			datasetJson,
 			presignUrl,
 			completeUrl,
@@ -234,7 +253,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 			// eslint-disable-next-line no-console
 			console.log('[jobs.run] modal accepted', { traceId, jobId });
 		}
-		return res.status(200).json({ jobId });
+		return res.status(200).json({ jobId, runId });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to enqueue experiment';
 		return res.status(500).json({ error: message });
@@ -307,10 +326,20 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 				if (job.type !== 'paper_compile' && !isAllowedResultExt(safeName)) {
 					throw new Error(`Disallowed artifact extension: ${safeName}`);
 				}
+				// For experiment runs, artifacts are stored under projects/<projectId>/results/<runId>/...
+				// For paper compile, the convention is fixed: paper.pdf under paper/<jobId>/paper.pdf
+				const runId =
+					job.type === 'paper_compile'
+						? null
+						: getRunId(job) ||
+							(job.createdAt instanceof Date ? formatRunIdFromDateUtc(job.createdAt) : null);
+				if (job.type !== 'paper_compile' && !runId) {
+					throw new Error('Missing runId for job');
+				}
 				const key =
 					job.type === 'paper_compile'
 						? buildPaperKey(job.projectId, job.id) // enforce 'paper.pdf' by convention
-						: buildResultKey(job.projectId, job.id, safeName);
+						: buildResultKey(job.projectId, runId as string, safeName);
 
 				const signed = await getSignedUploadUrl(key);
 				return { ...signed, fileName: safeName, mimeType: item.mimeType };
@@ -338,6 +367,10 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 		const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
 		if (!job) return res.status(404).json({ error: 'Job not found' });
 		const traceId = (typeof req.body?.traceId === 'string' && req.body.traceId.trim().length > 0 ? req.body.traceId.trim() : null) || getTraceId(job) || crypto.randomUUID();
+		const runId = getRunId(job) || (job.createdAt instanceof Date ? formatRunIdFromDateUtc(job.createdAt) : null);
+		if (job.type === 'experiment_run' && !runId) {
+			return res.status(500).json({ error: 'Missing runId for job' });
+		}
 
 		const expectedToken = getJobToken(job);
 		const providedToken = typeof req.body?.token === 'string' ? String(req.body.token).trim() : '';
@@ -387,7 +420,7 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 		await upsertFile({
 			projectId: job.projectId,
 			jobId: jobId,
-			path: `Results/${jobId}/results.txt`,
+			path: `Results/${runId}/results.txt`,
 			type: 'txt',
 			content: resultsText,
 			origin: 'job',
@@ -403,13 +436,13 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 			if (!p || !storageKey) continue;
 
 			// Enforce job-scoped result paths
-			const prefix = `Results/${jobId}/`;
+			const prefix = `Results/${runId}/`;
 			if (!p.startsWith(prefix)) continue;
 			const fileName = p.slice(prefix.length);
 			if (!isAllowedResultExt(fileName)) continue;
 
 			// Enforce storage key prefix
-			const expectedPrefix = `projects/${job.projectId}/results/${jobId}/`;
+			const expectedPrefix = `projects/${job.projectId}/results/${runId}/`;
 			if (!storageKey.startsWith(expectedPrefix)) continue;
 
 			const inferredType = inferFileTypeFromName(fileName);

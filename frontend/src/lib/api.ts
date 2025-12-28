@@ -129,7 +129,7 @@ export function getFileUrl(fileId: string, expires = 300) {
 }
 
 export function runExperiment(projectId: string) {
-  return api<{ jobId: string }>('/jobs/experiment/' + projectId + '/run', {
+  return api<{ jobId: string; runId: string }>('/jobs/experiment/' + projectId + '/run', {
     method: 'POST',
   })
 }

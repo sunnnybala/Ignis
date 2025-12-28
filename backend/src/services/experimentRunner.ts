@@ -9,6 +9,7 @@ import { db } from '../db/client';
 import { files, jobs } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { putObject } from '../storage/supabaseAdapter';
+import { formatRunIdFromDateUtc } from '../utils/runId';
 
 function detectMime(filename: string): { type: 'img' | 'csv' | 'other'; mime: string } {
 	const ext = path.extname(filename).toLowerCase();
@@ -96,9 +97,12 @@ export async function runExperimentJob(jobId: string): Promise<void> {
 	// Load job and project
 	const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
 	if (!job) return;
+	// Use a human-readable runId derived from the DB job createdAt (UTC).
+	// This is the directory name under Results/<runId>/...
+	const runId = job.createdAt instanceof Date ? formatRunIdFromDateUtc(job.createdAt) : formatRunIdFromDateUtc(new Date());
 	if (process.env.NODE_ENV === 'development') {
 		// eslint-disable-next-line no-console
-		console.log('[runner] job loaded', { jobId, projectId: job.projectId });
+		console.log('[runner] job loaded', { jobId, projectId: job.projectId, runId });
 	}
 	await db
 		.update(jobs)
@@ -154,7 +158,7 @@ export async function runExperimentJob(jobId: string): Promise<void> {
 		// Write results.txt in DB under Results/{jobId}/results.txt
 		await db.insert(files).values({
 			projectId: job.projectId,
-			path: `Results/${jobId}/results.txt`,
+			path: `Results/${runId}/results.txt`,
 			type: 'txt',
 			content: resultsText,
 			origin: 'job',
@@ -178,12 +182,12 @@ export async function runExperimentJob(jobId: string): Promise<void> {
 			const buf = await fs.readFile(full);
 			const size = buf.byteLength;
 			const hash = await sha256(buf);
-			const storageKey = `projects/${job.projectId}/results/${jobId}/${entry.name}`;
+			const storageKey = `projects/${job.projectId}/results/${runId}/${entry.name}`;
 			try {
 				await putObject(storageKey, buf, mime, true);
 				await db.insert(files).values({
 					projectId: job.projectId,
-					path: `Results/${jobId}/${entry.name}`,
+					path: `Results/${runId}/${entry.name}`,
 					type: type === 'img' ? 'img' : 'csv',
 					origin: 'job',
 					jobId: jobId,
