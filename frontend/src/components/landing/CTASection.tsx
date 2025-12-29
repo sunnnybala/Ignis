@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ArrowRight, Rocket } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -6,6 +7,7 @@ import WaitlistDialog from "@/components/landing/WaitlistDialog"
 
 export default function CTASection() {
   const [showWaitlist, setShowWaitlist] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (window.location.hash === "#waitlist") {
@@ -42,7 +44,7 @@ export default function CTASection() {
               size="lg"
               variant="hero"
               className="group h-auto px-8 py-6 text-lg"
-              onClick={() => setShowWaitlist(true)}
+              onClick={() => navigate("/register?from=%2Fhome%2Fprojects")}
             >
               Get Started Free
               <ArrowRight className="ml-2 transition-transform group-hover:translate-x-1" />

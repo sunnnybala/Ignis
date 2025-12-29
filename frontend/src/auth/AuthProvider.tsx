@@ -11,7 +11,7 @@ type AuthContextValue = {
   accessToken: string | null
   signUp: (email: string, password: string) => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
-  signInWithGoogle: () => Promise<void>
+  signInWithGoogle: (next?: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -95,10 +95,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) throw error
   }
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (next?: string) => {
     info('action.login', { method: 'google' })
-    const redirectTo =
-      (import.meta.env.VITE_AUTH_REDIRECT_URL as string) || window.location.origin
+    const rawBase = (import.meta.env.VITE_AUTH_REDIRECT_URL as string) || window.location.origin
+    const base = String(rawBase || '').replace(/\/+$/, '') || window.location.origin
+
+    // Always route OAuth back to our callback handler, not to "/".
+    // `next` must be an in-app path; the callback page re-validates this too.
+    const safeNext = typeof next === 'string' && next.startsWith('/') ? next : '/home/projects'
+    const redirectTo = `${base}/auth/callback?next=${encodeURIComponent(safeNext)}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },

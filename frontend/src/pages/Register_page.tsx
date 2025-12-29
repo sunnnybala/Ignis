@@ -54,8 +54,8 @@ export default function RegisterPage() {
 
   const from = useMemo(() => {
     const raw = searchParams.get("from")
-    if (!raw) return "/home"
-    return raw.startsWith("/") ? raw : "/home"
+    if (!raw) return "/home/projects"
+    return raw.startsWith("/") ? raw : "/home/projects"
   }, [searchParams])
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function RegisterPage() {
     debug("submit", { action: "register", method: "google" })
     setSubmitting(true)
     try {
-      await signInWithGoogle()
+      await signInWithGoogle(from)
     } catch (err: unknown) {
       const c = classifyError(err)
       warn("failure", { category: c.category })

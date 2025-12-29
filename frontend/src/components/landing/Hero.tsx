@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ArrowRight, Sparkles } from "lucide-react"
 
 import heroImage from "@/assets/hero-bg.jpg"
@@ -7,6 +8,7 @@ import WaitlistDialog from "@/components/landing/WaitlistDialog"
 
 export default function Hero() {
   const [showWaitlist, setShowWaitlist] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden">
@@ -60,7 +62,7 @@ export default function Hero() {
               size="lg"
               variant="hero"
               className="group h-auto px-8 py-6 text-lg"
-              onClick={() => setShowWaitlist(true)}
+              onClick={() => navigate("/register?from=%2Fhome%2Fprojects")}
             >
               Start Your Research
               <ArrowRight className="ml-2 transition-transform group-hover:translate-x-1" />

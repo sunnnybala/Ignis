@@ -59,9 +59,9 @@ export default function LoginPage() {
 
   const from = useMemo(() => {
     const raw = searchParams.get("from")
-    if (!raw) return "/home"
+    if (!raw) return "/home/projects"
     // Prevent open redirects. Only allow in-app paths.
-    return raw.startsWith("/") ? raw : "/home"
+    return raw.startsWith("/") ? raw : "/home/projects"
   }, [searchParams])
 
   // If already logged in, bounce to target.
@@ -112,7 +112,7 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       // This triggers a redirect; it typically won't return in the same page.
-      await signInWithGoogle()
+      await signInWithGoogle(from)
     } catch (err: unknown) {
       const c = classifyError(err)
       warn("failure", { category: c.category })
