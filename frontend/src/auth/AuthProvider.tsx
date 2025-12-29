@@ -103,7 +103,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     // Always route OAuth back to our callback handler, not to "/".
     // `next` must be an in-app path; the callback page re-validates this too.
     const safeNext = typeof next === 'string' && next.startsWith('/') ? next : '/home/projects'
-    const redirectTo = `${base}/auth/callback?next=${encodeURIComponent(safeNext)}`
+    const callbackBase = base.endsWith('/auth/callback') ? base : `${base}/auth/callback`
+    const redirectTo = `${callbackBase}?next=${encodeURIComponent(safeNext)}`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
