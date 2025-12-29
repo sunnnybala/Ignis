@@ -298,7 +298,7 @@ export default function ChatPanel({
       <div className="border-t p-3">
         <InputGroup className="w-full min-w-0">
           <InputGroupTextarea
-            placeholder="Ask, Search or Chat..."
+            placeholder="Enter your idea in detail"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
