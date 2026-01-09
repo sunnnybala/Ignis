@@ -1,73 +1,136 @@
-# React + TypeScript + Vite
+# Ignis Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React SPA for the Ignis AI-powered research platform.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Framework**: React 19 + TypeScript
+- **Build**: Vite 7
+- **Routing**: React Router DOM 7
+- **UI Components**: Shadcn/ui + Radix UI
+- **Styling**: Tailwind CSS 4
+- **State**: Zustand + TanStack React Query
+- **Editor**: Monaco Editor
+- **PDF**: react-pdf + pdfjs-dist
+- **Auth**: Supabase
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
 
-## Expanding the ESLint configuration
+- Node.js 18+
+- Backend server running (localhost:4000)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Installation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Environment Variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Create a `.env` file:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```env
+VITE_API_BASE_URL=http://localhost:4000
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbG...
 ```
+
+### Development
+
+```bash
+npm run dev      # Start Vite dev server (localhost:5173)
+```
+
+### Production
+
+```bash
+npm run build    # TypeScript check + Vite build
+npm run preview  # Preview production build locally
+```
+
+## Project Structure
+
+```
+src/
+├── main.tsx              # Vite entry point
+├── App.tsx               # Router setup
+├── pages/
+│   ├── Landing.tsx       # Public homepage
+│   ├── Login_page.tsx    # Login
+│   ├── Register_page.tsx # Registration
+│   ├── Home.tsx          # Dashboard layout
+│   ├── HomeProjects.tsx  # Project list
+│   ├── Forge.tsx         # Experiment workspace
+│   └── Athena.tsx        # Paper writing UI
+├── components/
+│   ├── ChatPanel.tsx     # AI agent chat (SSE)
+│   ├── ForgeMain.tsx     # Experiment editor + results
+│   ├── ForgeSidebar.tsx  # File tree navigation
+│   ├── landing/          # Landing page components
+│   └── ui/               # Shadcn/Radix components
+├── lib/
+│   ├── api.ts            # API client with auth
+│   ├── chat.ts           # Chat state management
+│   └── supabaseClient.ts # Supabase client
+├── auth/
+│   ├── AuthProvider.tsx  # Auth context
+│   └── RequireAuth.tsx   # Protected route wrapper
+├── hooks/                # Custom React hooks
+└── assets/               # Static assets
+```
+
+## Routes
+
+| Path | Component | Description |
+|------|-----------|-------------|
+| `/` | Landing | Public homepage |
+| `/login` | Login_page | Login form |
+| `/register` | Register_page | Registration form |
+| `/auth/callback` | AuthCallback | OAuth callback |
+| `/home` | Home | Dashboard (protected) |
+| `/home/projects` | HomeProjects | Project list |
+| `/forge/:projectId` | Forge | Experiment workspace |
+| `/athena/:projectId` | Athena | Paper writing |
+
+## Key Features
+
+### Agent Chat (SSE Streaming)
+Real-time chat with AI agents via Server-Sent Events. See `components/ChatPanel.tsx`.
+
+### Monaco Editor
+Code editing for Python experiments and LaTeX papers with syntax highlighting.
+
+### File Tree Navigation
+Hierarchical file browser with lazy loading. See `components/ForgeSidebar.tsx`.
+
+### PDF Viewer
+Embedded PDF preview for compiled papers. See `pages/Athena.tsx`.
+
+### Resizable Panels
+Split-view layouts using `react-resizable-panels`.
+
+## Scripts
+
+```bash
+npm run dev      # Development server with HMR
+npm run build    # Production build (tsc + vite)
+npm run lint     # Run ESLint
+npm run preview  # Preview production build
+```
+
+## UI Components
+
+Uses Shadcn/ui components built on Radix UI primitives:
+- Button, Input, Badge, Card
+- Dialog, Dropdown Menu, Tooltip
+- Avatar, Separator, Scroll Area
+- Sheet (mobile sidebar)
+
+## Styling
+
+Tailwind CSS 4 with:
+- `clsx` + `tailwind-merge` for conditional classes
+- `class-variance-authority` for component variants
+- `tailwindcss-animate` for animations

@@ -1,13 +1,10 @@
-
 import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
 import { Observability } from '@mastra/observability';
-import { weatherWorkflow } from './workflows/weather-workflow';
 import { noveltyRefineWorkflow } from './workflows/novelty-refine-workflow';
 import { planImplementWorkflow } from './workflows/plan-implement-workflow';
 import { paperPlanWriteWorkflow } from './workflows/paper-plan-write-workflow';
-import { weatherAgent } from './agents/weather-agent';
 import { vfsAgent } from './agents/vfs-agent';
 import { researchAgent } from './agents/research-agent';
 import { planImplementAgent } from './agents/plan-implement-agent';
@@ -25,9 +22,8 @@ import { ignisRouterAgent } from './agents/ignis-router-agent';
 
 
 export const mastra = new Mastra({
-  workflows: { weatherWorkflow, noveltyRefineWorkflow, planImplementWorkflow, paperPlanWriteWorkflow },
+  workflows: { noveltyRefineWorkflow, planImplementWorkflow, paperPlanWriteWorkflow },
   agents: {
-    weatherAgent,
     vfsAgent,
     researchAgent,
     planImplementAgent,

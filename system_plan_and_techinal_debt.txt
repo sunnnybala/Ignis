@@ -1,7 +1,5 @@
 1) in athena the images passed from initial paper generation step can be differnt from the ones used in later stages. resulting in user confusion
 2) the athena paper chat doesnt have image access.
-3) environment hardcoded. fix this. 
-4) no proper auth and dev user hardcoded    UPDATE: Auth implemneted
 5) no chats storage.  
 6) stale kaggle data, add fingerpints
 7) no canonical storgae for datasets and a single modal volumne for all users currnetly. handle that. 
