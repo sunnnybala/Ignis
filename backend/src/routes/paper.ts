@@ -8,6 +8,8 @@ import { initSse } from '../utils/sse';
 import { compileLatexToPdf, LatexCompileError } from '../services/latexCompiler';
 import { getSignedUrl } from '../storage/supabaseAdapter';
 import { getAuthedUser, getOwnedProject, logAuthzDenied } from '../authz/ownership';
+import { clampInt } from '../utils/numbers';
+import { isSupportedImagePath } from '../mastra/tools/tool-utils';
 
 export const paperRouter = Router();
 
@@ -28,18 +30,6 @@ type AthenaMeta = {
 	hasResults?: boolean;
 	notes?: string;
 };
-
-function clampInt(n: number, min: number, max: number): number {
-	if (!Number.isFinite(n)) return min;
-	if (n < min) return min;
-	if (n > max) return max;
-	return Math.floor(n);
-}
-
-function isSupportedPaperImagePath(p: string): boolean {
-	const s = (p || '').toLowerCase();
-	return s.endsWith('.png') || s.endsWith('.jpg') || s.endsWith('.jpeg');
-}
 
 type PaperChatWriteToolArgs = {
 	latex: string;
@@ -173,7 +163,7 @@ async function loadLatestJobImageUrls(projectId: string, jobId: string): Promise
 		.filter((f) => String((f as any)?.jobId || '') === jobId)
 		.filter((f) => f.type === 'img')
 		.filter((f) => !!(f as any).storageKey)
-		.filter((f) => isSupportedPaperImagePath(f.path))
+		.filter((f) => isSupportedImagePath(f.path))
 		// stable-ish order for consistency
 		.sort((a, b) => a.path.localeCompare(b.path))
 		.slice(0, maxCount);

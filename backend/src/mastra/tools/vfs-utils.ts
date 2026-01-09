@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { files } from '../../db/schema';
 import { getOwnedProject } from '../../authz/ownership';
+import { getRuntimeIds } from './tool-utils';
 
 const TEXT_TYPES = new Set(['txt', 'md', 'py', 'tex', 'csv', 'log'] as const);
 export type TextFileType = (typeof TEXT_TYPES extends Set<infer T> ? T : never) & string;
@@ -35,21 +36,6 @@ export function inferTextTypeFromPath(path: string): 'txt' | 'md' | 'py' | 'tex'
   // Treat .json as text in DB (matches your existing convention for Design/dataset.json)
   if (lower.endsWith('.json')) return 'txt';
   return 'txt';
-}
-
-function getRuntimeIds(toolContext?: any): { userId: string; projectId: string } {
-  // In @mastra/core@1.0.0-beta.17, agent/tool execution uses RequestContext (not RuntimeContext).
-  // We read userId/projectId from context.requestContext, and keep a fallback for legacy nesting.
-  const requestContext = toolContext?.requestContext;
-
-  const userId =
-    String(requestContext?.get?.('userId') ?? toolContext?.runtimeContext?.get?.('userId') ?? '').trim();
-  const projectId =
-    String(requestContext?.get?.('projectId') ?? toolContext?.runtimeContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) {
-    throw new Error('Missing requestContext userId/projectId');
-  }
-  return { userId, projectId };
 }
 
 export async function readTextFileByPath(opts: { path: string }, toolContext?: any) {

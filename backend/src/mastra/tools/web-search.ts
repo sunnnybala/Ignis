@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { withTimeout } from './tool-utils';
 
 type ExaResult = {
   title?: string;
@@ -19,21 +20,6 @@ function requiredEnv(name: string): string {
   const v = String(process.env[name] || '').trim();
   if (!v) throw new Error(`${name} is not set`);
   return v;
-}
-
-function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(new Error('timeout')), ms);
-  const cleanup = () => clearTimeout(timeout);
-
-  // If upstream signal aborts, abort ours.
-  if (signal) {
-    if (signal.aborted) controller.abort(signal.reason);
-    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
-  }
-
-  controller.signal.addEventListener('abort', cleanup, { once: true });
-  return controller.signal;
 }
 
 export const webSearchTool = createTool({

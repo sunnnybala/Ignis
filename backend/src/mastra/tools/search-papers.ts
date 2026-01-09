@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { withTimeout } from './tool-utils';
 
 type S2Author = { name?: string };
 type S2Paper = {
@@ -34,20 +35,6 @@ type ExaPaperSearchResponse = {
 function optionalEnv(name: string): string | null {
   const v = String(process.env[name] || '').trim();
   return v || null;
-}
-
-function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(new Error('timeout')), ms);
-  const cleanup = () => clearTimeout(timeout);
-
-  if (signal) {
-    if (signal.aborted) controller.abort(signal.reason);
-    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
-  }
-
-  controller.signal.addEventListener('abort', cleanup, { once: true });
-  return controller.signal;
 }
 
 function toOffsetCursor(cursor?: string): number {
