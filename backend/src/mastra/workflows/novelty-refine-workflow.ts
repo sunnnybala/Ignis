@@ -537,9 +537,8 @@ const refineIdeaAndWriteStep = createStep({
     noveltyAssessmentText: z.string(),
   }),
   outputSchema: z.object({
-    litReviewPath: z.string(),
-    noveltyAssessmentPath: z.string(),
-    refinedIdeaPath: z.string(),
+    litReviewText: z.string(),
+    noveltyAssessmentText: z.string(),
     refinedIdeaText: z.string(),
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
@@ -580,21 +579,24 @@ const refineIdeaAndWriteStep = createStep({
       refinedIdeaTextChars: refinedIdeaText.length,
     });
 
-    return { litReviewPath: inputData.litReviewPath, noveltyAssessmentPath: inputData.noveltyAssessmentPath, refinedIdeaPath: OUTPUT_PATHS.refinedIdea, refinedIdeaText };
+    return {
+      litReviewText: inputData.litReviewText,
+      noveltyAssessmentText: inputData.noveltyAssessmentText,
+      refinedIdeaText,
+    };
   },
 });
 
 export const noveltyRefineWorkflow = createWorkflow({
   id: 'novelty-refine-workflow',
   description:
-    'Novelty refine: build a search query from idea+memory, fetch N papers, batch into pairs, run per-pair workers, consolidate, and write artifacts.',
+    'Novelty refine: build a search query from idea, fetch N papers, batch into pairs, run per-pair workers, consolidate, and write artifacts.',
   inputSchema: z.object({
     idea: z.string().min(1).max(10_000),
   }),
   outputSchema: z.object({
-    litReviewPath: z.string(),
-    noveltyAssessmentPath: z.string(),
-    refinedIdeaPath: z.string(),
+    litReviewText: z.string(),
+    noveltyAssessmentText: z.string(),
     refinedIdeaText: z.string(),
   }),
 })
