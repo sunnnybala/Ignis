@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

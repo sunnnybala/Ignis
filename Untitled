@@ -1,0 +1,13 @@
+❯ /ide 
+───────────────────────────────────────────────────────────────────────────────────────
+ Select IDE
+ Connect to an IDE for integrated development features.
+
+ No available IDEs detected. Make sure your IDE has the Claude Code extension or       
+ plugin installed and is running.
+ Found 1 other running IDE(s). However, their workspace/project directories do not     
+ match the current cwd.
+
+    • Cursor: c:\Users\dhruv\OneDrive\Desktop\startups\Ignis\MVP
+
+ Enter to confirm · escape to cancel

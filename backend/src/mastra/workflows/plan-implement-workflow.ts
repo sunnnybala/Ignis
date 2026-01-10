@@ -4,15 +4,6 @@ import { z } from 'zod';
 import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
 
-function requireIdsFromRequestContext(requestContext: any): { userId: string; projectId: string } {
-  const userId = String(requestContext?.get?.('userId') ?? '').trim();
-  const projectId = String(requestContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) {
-    throw new Error('Missing requestContext userId/projectId');
-  }
-  return { userId, projectId };
-}
-
 function clipText(label: string, text: string, maxChars: number): string {
   const s = String(text ?? '');
   if (s.length <= maxChars) return s;
@@ -68,7 +59,6 @@ const planAndDatasetStep = createStep({
   }),
   execute: async ({ mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
 
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
     if (!refined?.found) {
@@ -89,7 +79,6 @@ const planAndDatasetStep = createStep({
     ].join('\n');
 
     const res = await agent.generate(prompt, {
-      memory: { resource: userId, thread: projectId },
       structuredOutput: { schema: plannerOutputSchema, errorStrategy: 'strict' },
     } as any);
 
@@ -143,7 +132,6 @@ const generateExperimentStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
 
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
     const plan = await (readFileTool as any).execute({ path: PATHS.designPlan }, { requestContext });
@@ -178,7 +166,6 @@ const generateExperimentStep = createStep({
     ].join('\n');
 
     const res = await agent.generate(prompt, {
-      memory: { resource: userId, thread: projectId },
       structuredOutput: { schema: coderOutputSchema, errorStrategy: 'strict' },
     } as any);
 

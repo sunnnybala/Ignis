@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const consolidateLitReviewAgent = new Agent({
   id: 'consolidate-lit-review-agent',
@@ -29,7 +28,6 @@ Rules:
 - Keep it concise but complete (~800-1500 words unless told otherwise).
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory(),
 });
 
 

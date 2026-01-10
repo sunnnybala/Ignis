@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 import { webSearchTool } from '../tools/web-search';
 
@@ -40,9 +39,6 @@ Guidance:
 `.trim(),
   model: 'google/gemini-3-pro-preview',
   tools: { webSearchTool },
-  memory: new Memory({
-    options: { lastMessages: 20 },
-  }),
 });
 
 

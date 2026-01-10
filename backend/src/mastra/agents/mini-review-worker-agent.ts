@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const miniReviewWorkerAgent = new Agent({
   id: 'mini-review-worker-agent',
@@ -40,7 +39,6 @@ Important:
 - Keep miniNoveltyAssessmentText under ~350 words.
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory(),
 });
 
 
