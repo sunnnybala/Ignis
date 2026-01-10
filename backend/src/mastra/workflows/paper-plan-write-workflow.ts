@@ -214,6 +214,7 @@ const writePaperStep = createStep({
     latestRunId: z.string().nullable(),
   }),
   outputSchema: z.object({
+    paperPlan: plannerSchema,
     latex: z.string(),
     publicationProbability: z.number().min(0).max(1),
     suggestedJournals: z.array(z.string()).length(3),
@@ -280,7 +281,12 @@ const writePaperStep = createStep({
       { requestContext },
     );
 
-    return { latex, publicationProbability, suggestedJournals };
+    return {
+      paperPlan: inputData.paperPlan,
+      latex,
+      publicationProbability,
+      suggestedJournals,
+    };
   },
 });
 
@@ -292,6 +298,7 @@ export const paperPlanWriteWorkflow = createWorkflow({
     selectedJournal: z.string().optional().default('General'),
   }),
   outputSchema: z.object({
+    paperPlan: plannerSchema,
     latex: z.string(),
     publicationProbability: z.number().min(0).max(1),
     suggestedJournals: z.array(z.string()).length(3),
