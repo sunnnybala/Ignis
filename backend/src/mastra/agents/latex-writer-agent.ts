@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const latexWriterAgent = new Agent({
   id: 'latex-writer-agent',
@@ -37,9 +36,6 @@ LaTeX requirements:
 - Do not invent numerical results; only summarize what appears in results.txt.
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory({
-    options: { lastMessages: 20 },
-  }),
 });
 
 

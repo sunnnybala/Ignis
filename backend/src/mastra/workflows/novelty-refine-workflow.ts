@@ -24,19 +24,6 @@ function getConfigFromEnv() {
   return { nPapers, concurrency };
 }
 
-function requireIdsFromRequestContext(requestContext: any): { userId: string; projectId: string } {
-  // In this repo, Mastra uses RequestContext (see backend/src/mastra/tools/vfs-utils.ts).
-  // We read userId/projectId from requestContext so agent memory can be scoped:
-  // - resource = userId
-  // - thread   = projectId
-  const userId = String(requestContext?.get?.('userId') ?? '').trim();
-  const projectId = String(requestContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) {
-    throw new Error('Missing requestContext userId/projectId');
-  }
-  return { userId, projectId };
-}
-
 function traceMeta(requestContext: any): { traceId: string | null; userId?: string; projectId?: string } {
   const traceId = requestContext?.get?.('traceId') ? String(requestContext.get('traceId')) : null;
   const userId = requestContext?.get?.('userId') ? String(requestContext.get('userId')) : undefined;
@@ -114,8 +101,6 @@ const buildQueryStep = createStep({
       ideaChars: String(inputData.idea || '').length,
     });
 
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
-
     const querySchema = z.object({ query: z.string().min(1).max(500) });
     const agent = mastra.getAgent('queryBuilderAgent');
     if (!agent) throw new Error('queryBuilderAgent not found (is it registered in mastra/index.ts?)');
@@ -123,9 +108,6 @@ const buildQueryStep = createStep({
     const prompt = `${inputData.idea}\n\nReturn a single best search query to search for scholarly papers related to user's idea.`;
 
     const res = await agent.generate(prompt, {
-      // Critical: this is how Mastra memory retrieves conversation history.
-      memory: { resource: userId, thread: projectId },
-      // Critical: enforce schema instead of hoping the model follows instructions.
       structuredOutput: { schema: querySchema, errorStrategy: 'strict' },
     } as any);
 
@@ -571,8 +553,6 @@ const refineIdeaAndWriteStep = createStep({
     const agent = mastra.getAgent('refineIdeaAgent');
     if (!agent) throw new Error('refineIdeaAgent not found (is it registered in mastra/index.ts?)');
 
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
-
     const prompt = [
       `ORIGINAL USER IDEA:\n${inputData.idea}`,
       '',
@@ -584,7 +564,6 @@ const refineIdeaAndWriteStep = createStep({
     ].join('\n');
 
     const res = await agent.generate(prompt, {
-      memory: { resource: userId, thread: projectId },
       structuredOutput: { schema: textOutSchema, errorStrategy: 'strict' },
     } as any);
 

@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const consolidateNoveltyAgent = new Agent({
   id: 'consolidate-novelty-agent',
@@ -31,7 +30,6 @@ UNKNOWNs / WHAT TO SEARCH NEXT
 REFERENCES (from provided list)
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory(),
 });
 
 

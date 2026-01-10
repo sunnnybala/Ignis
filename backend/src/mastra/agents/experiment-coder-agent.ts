@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const experimentCoderAgent = new Agent({
   id: 'experiment-coder-agent',
@@ -35,11 +34,6 @@ Requirements requirements (requirementsTxt):
 - If experiment.py uses only the standard library, return an empty string.
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory({
-    options: {
-      lastMessages: 20,
-    },
-  }),
 });
 
 

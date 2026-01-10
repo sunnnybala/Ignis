@@ -6,13 +6,6 @@ import { writeFileTool } from '../tools/write-file';
 import { readLatestResultsTool } from '../tools/read-latest-results';
 import { getLatestResultImagesTool } from '../tools/get-latest-result-images';
 
-function requireIdsFromRequestContext(requestContext: any): { userId: string; projectId: string } {
-  const userId = String(requestContext?.get?.('userId') ?? '').trim();
-  const projectId = String(requestContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) throw new Error('Missing requestContext userId/projectId');
-  return { userId, projectId };
-}
-
 function clipText(label: string, text: string, maxChars: number): string {
   const s = String(text ?? '');
   if (s.length <= maxChars) return s;
@@ -159,7 +152,6 @@ const planPaperStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
 
     const agent = mastra.getAgent('paperPlannerAgent');
     if (!agent) throw new Error('paperPlannerAgent not found (is it registered in mastra/index.ts?)');
@@ -189,7 +181,6 @@ const planPaperStep = createStep({
         },
       ],
       {
-      memory: { resource: userId, thread: projectId },
       structuredOutput: { schema: plannerSchema, errorStrategy: 'strict' },
       } as any,
     );
@@ -229,7 +220,6 @@ const writePaperStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
-    const { userId, projectId } = requireIdsFromRequestContext(requestContext);
 
     const agent = mastra.getAgent('latexWriterAgent');
     if (!agent) throw new Error('latexWriterAgent not found (is it registered in mastra/index.ts?)');
@@ -260,7 +250,6 @@ const writePaperStep = createStep({
         },
       ],
       {
-      memory: { resource: userId, thread: projectId },
       structuredOutput: { schema: latexSchema, errorStrategy: 'strict' },
       } as any,
     );

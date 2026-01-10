@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const refineIdeaAgent = new Agent({
   id: 'refine-idea-agent',
@@ -33,11 +32,6 @@ RISKS AND MITIGATIONS
 NEXT ACTIONS (5-10 bullets in plain text)
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory({
-    options: {
-      lastMessages: 20,
-    },
-  }),
 });
 
 

@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 export const queryBuilderAgent = new Agent({
   id: 'query-builder-agent',
@@ -27,7 +26,6 @@ Examples (format only):
 {"query":"diffusion models medical imaging segmentation uncertainty calibration active learning"}
 `.trim(),
   model: 'google/gemini-3-pro-preview',
-  memory: new Memory(),
 });
 
 

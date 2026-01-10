@@ -1,5 +1,4 @@
 import { Agent } from '@mastra/core/agent';
-import { Memory } from '@mastra/memory';
 
 import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
@@ -28,7 +27,6 @@ ${extra ? `User instructions (testing):\n${extra}` : ''}
   },
   model: 'google/gemini-3-pro-preview',
   tools: { readFileTool, writeFileTool, webSearchTool, searchPapersTool },
-  memory: new Memory(),
 });
 
 
