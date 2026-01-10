@@ -4,22 +4,16 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { files, projects } from '../db/schema';
 import { ensureUserProfile } from '../db/userProfile';
-import { logAuthzDenied } from '../authz/ownership';
+import { getAuthedUser, logAuthzDenied } from '../authz/ownership';
 
 export const projectsRouter = Router();
 
 const isDev = process.env.NODE_ENV === 'development';
 
-function requireUser(req: any): { id: string; email?: string | null; role?: string | null } | null {
-	const u = req?.user;
-	if (!u || typeof u.id !== 'string' || !u.id.trim()) return null;
-	return { id: String(u.id), email: typeof u.email === 'string' ? u.email : null, role: typeof u.role === 'string' ? u.role : null };
-}
-
 // GET /projects -> list projects for current authenticated user
 projectsRouter.get('/', async (req, res) => {
 	try {
-		const user = requireUser(req);
+		const user = getAuthedUser(req);
 		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		await ensureUserProfile(user);
 		const rows = await db.select().from(projects).where(eq(projects.userId, user.id));
@@ -37,7 +31,7 @@ projectsRouter.post('/', async (req, res) => {
 		const name = String(req.body?.name || '').trim();
 		if (!name) return res.status(400).json({ error: 'name is required' });
 
-		const user = requireUser(req);
+		const user = getAuthedUser(req);
 		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		await ensureUserProfile(user);
 		const projectId = crypto.randomUUID();
@@ -87,7 +81,7 @@ projectsRouter.post('/', async (req, res) => {
 // GET /projects/:id/files/tree
 projectsRouter.get('/:id/files/tree', async (req, res) => {
 	try {
-		const user = requireUser(req);
+		const user = getAuthedUser(req);
 		if (!user) return res.status(401).json({ error: 'Unauthorized' });
 		const projectId = String(req.params.id);
 

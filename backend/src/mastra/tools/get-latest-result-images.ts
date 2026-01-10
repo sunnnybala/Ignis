@@ -6,14 +6,8 @@ import { db } from '../../db/client';
 import { files } from '../../db/schema';
 import { getOwnedProject } from '../../authz/ownership';
 import { getSignedUrl } from '../../storage/supabaseAdapter';
-
-function getRuntimeIds(toolContext?: any): { userId: string; projectId: string } {
-  const requestContext = toolContext?.requestContext;
-  const userId = String(requestContext?.get?.('userId') ?? toolContext?.runtimeContext?.get?.('userId') ?? '').trim();
-  const projectId = String(requestContext?.get?.('projectId') ?? toolContext?.runtimeContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) throw new Error('Missing requestContext userId/projectId');
-  return { userId, projectId };
-}
+import { getRuntimeIds, compareVersionStrings, isSupportedImagePath } from './tool-utils';
+import { clampInt } from '../../utils/numbers';
 
 function extractRunId(path: string): string | null {
   // Supports:
@@ -21,38 +15,6 @@ function extractRunId(path: string): string | null {
   // - Results/<runId>/<imageFile>
   const m = /^Results\/([^/]+)\//i.exec(path);
   return m?.[1] ?? null;
-}
-
-function compareRunIds(a: string, b: string): number {
-  // User requested "greatest timestamp". We treat numeric strings as timestamps and compare numerically;
-  // otherwise lexicographic compare (works for sortable timestamp formats).
-  const aDigits = /^\d+$/.test(a);
-  const bDigits = /^\d+$/.test(b);
-  if (aDigits && bDigits) {
-    try {
-      const ai = BigInt(a);
-      const bi = BigInt(b);
-      return ai === bi ? 0 : ai > bi ? 1 : -1;
-    } catch {
-      // fall through
-    }
-  }
-  return a === b ? 0 : a > b ? 1 : -1;
-}
-
-function isSupportedImagePath(path: string): boolean {
-  const lower = path.toLowerCase();
-  return (
-    lower.endsWith('.png') ||
-    lower.endsWith('.jpg') ||
-    lower.endsWith('.jpeg') ||
-    lower.endsWith('.webp')
-  );
-}
-
-function clampInt(n: number, min: number, max: number): number {
-  if (!Number.isFinite(n)) return min;
-  return Math.min(max, Math.max(min, Math.trunc(n)));
 }
 
 function getImageUrlExpiresFromEnv(): number {
@@ -106,7 +68,7 @@ export const getLatestResultImagesTool = createTool({
 
     let best = runIds[0]!;
     for (const id of runIds.slice(1)) {
-      if (compareRunIds(id, best) > 0) best = id;
+      if (compareVersionStrings(id, best) > 0) best = id;
     }
 
     // Fetch image artifacts within Results/<best>/

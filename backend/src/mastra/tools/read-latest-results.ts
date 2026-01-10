@@ -5,36 +5,12 @@ import { z } from 'zod';
 import { db } from '../../db/client';
 import { files } from '../../db/schema';
 import { getOwnedProject } from '../../authz/ownership';
-
-function getRuntimeIds(toolContext?: any): { userId: string; projectId: string } {
-  // Matches the rest of this repo: tools run with RequestContext (not RuntimeContext).
-  const requestContext = toolContext?.requestContext;
-  const userId = String(requestContext?.get?.('userId') ?? toolContext?.runtimeContext?.get?.('userId') ?? '').trim();
-  const projectId = String(requestContext?.get?.('projectId') ?? toolContext?.runtimeContext?.get?.('projectId') ?? '').trim();
-  if (!userId || !projectId) throw new Error('Missing requestContext userId/projectId');
-  return { userId, projectId };
-}
+import { getRuntimeIds, compareVersionStrings } from './tool-utils';
 
 function extractTimestamp(path: string): string | null {
   // Expected: Results/<job_timestamp>/results.txt
   const m = /^Results\/([^/]+)\/results\.txt$/i.exec(path);
   return m?.[1] ?? null;
-}
-
-function compareTimestamps(a: string, b: string): number {
-  const aDigits = /^\d+$/.test(a);
-  const bDigits = /^\d+$/.test(b);
-  if (aDigits && bDigits) {
-    try {
-      const ai = BigInt(a);
-      const bi = BigInt(b);
-      return ai === bi ? 0 : ai > bi ? 1 : -1;
-    } catch {
-      // fall through to string compare
-    }
-  }
-  // Fallback: lexicographic compare (works for sortable formats like YYYYMMDDHHmmss).
-  return a === b ? 0 : a > b ? 1 : -1;
 }
 
 export const readLatestResultsTool = createTool({
@@ -80,7 +56,7 @@ export const readLatestResultsTool = createTool({
 
     let best = candidates[0]!;
     for (const c of candidates.slice(1)) {
-      const cmp = compareTimestamps(String(c.ts), String(best.ts));
+      const cmp = compareVersionStrings(String(c.ts), String(best.ts));
       if (cmp > 0) best = c;
     }
 
