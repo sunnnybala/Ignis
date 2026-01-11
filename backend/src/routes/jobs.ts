@@ -15,7 +15,6 @@ import { formatRunIdFromDateUtc } from '../utils/runId';
 
 export const jobsRouter = Router();
 
-const isDev = process.env.NODE_ENV === 'development';
 const MODAL_RUNNER_URL = (process.env.MODAL_RUNNER_URL || '').trim();
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').trim();
 
@@ -111,10 +110,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		const traceId = crypto.randomUUID();
 		const jobToken = crypto.randomUUID();
 
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] start', { traceId, projectId });
-		}
+		logger.info('jobs.run.start', { traceId, projectId });
 
 		if (!MODAL_RUNNER_URL) {
 			return res.status(500).json({ error: 'MODAL_RUNNER_URL is not set' });
@@ -136,11 +132,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		// Persist runId into metadata so downstream endpoints (presign/complete) can look it up cheaply.
 		await db.update(jobs).set({ metadata: { traceId, jobToken, runId } as any }).where(eq(jobs.id, jobId));
 		logger.info('job.enqueue', { requestId: req.requestId || null, traceId, jobId, projectId, userId: user.id });
-
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] job created', { traceId, jobId, projectId });
-		}
+		logger.debug('jobs.run.job_created', { traceId, jobId, projectId });
 
 		const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
 		const exp = all.find((f) => f.path === 'Experimentation/experiment.py' && f.type === 'py')?.content ?? '';
@@ -149,38 +141,29 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 			all.find((f) => f.path === 'Experimentation/requirements.txt' && f.type === 'txt')?.content ?? '';
 
 		if (!exp || exp.trim().length === 0) {
-			if (isDev) {
-				// eslint-disable-next-line no-console
-				console.log('[jobs.run] missing experiment.py', { traceId, jobId, projectId });
-			}
+			logger.warn('jobs.run.missing_experiment', { traceId, jobId, projectId });
 			await db.update(jobs).set({ status: 'failed', output: 'Experimentation/experiment.py is empty', endedAt: new Date() }).where(eq(jobs.id, jobId));
 			return res.status(400).json({ error: 'Experimentation/experiment.py is empty', jobId });
 		}
 		if (!datasetJson || datasetJson.trim().length === 0) {
-			if (isDev) {
-				// eslint-disable-next-line no-console
-				console.log('[jobs.run] missing dataset.json', { traceId, jobId, projectId });
-			}
+			logger.warn('jobs.run.missing_dataset', { traceId, jobId, projectId });
 			await db.update(jobs).set({ status: 'failed', output: 'Design/dataset.json is empty', endedAt: new Date() }).where(eq(jobs.id, jobId));
 			return res.status(400).json({ error: 'Design/dataset.json is empty', jobId });
 		}
 
 		// Logging-only parse for debugging (do not block)
 		const parsed = parseDatasetConfig(datasetJson);
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] inputs loaded', {
-				traceId,
-				jobId,
-				projectId,
-				expLen: exp.length,
-				datasetLen: datasetJson.length,
-				requirementsLen: requirementsTxt.length,
-				datasetParseOk: parsed.ok,
-				datasetError: parsed.ok ? undefined : parsed.error,
-				kaggleDataset: parsed.ok ? parsed.value.kaggle.dataset : undefined,
-			});
-			}
+		logger.debug('jobs.run.inputs_loaded', {
+			traceId,
+			jobId,
+			projectId,
+			expLen: exp.length,
+			datasetLen: datasetJson.length,
+			requirementsLen: requirementsTxt.length,
+			datasetParseOk: parsed.ok,
+			datasetError: parsed.ok ? undefined : parsed.error,
+			kaggleDataset: parsed.ok ? parsed.value.kaggle.dataset : undefined,
+		});
 
 		const baseUrl = getBaseUrl(req);
 		const presignUrl = `${baseUrl}/jobs/${jobId}/artifacts/presign`;
@@ -190,10 +173,7 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 		//   https://<workspace>--<app>-<function>.modal.run
 		// So MODAL_RUNNER_URL should be set to that full URL and we should not append "/run" here.
 		const runnerUrl = `${MODAL_RUNNER_URL.replace(/\/+$/, '')}`;
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] calling modal', { traceId, jobId, runnerUrl, presignUrl, completeUrl });
-		}
+		logger.debug('jobs.run.modal_call', { traceId, jobId, runnerUrl, presignUrl, completeUrl });
 
 		const payload = {
 			traceId,
@@ -216,15 +196,12 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 
 		if (!resp.ok) {
 			const body = await resp.text().catch(() => '');
-			if (isDev) {
-				// eslint-disable-next-line no-console
-				console.log('[jobs.run] modal rejected', {
-					traceId,
-					jobId,
-					status: resp.status,
-					body: body.slice(0, 2000),
-				});
-			}
+			logger.warn('jobs.run.modal_rejected', {
+				traceId,
+				jobId,
+				status: resp.status,
+				body: body.slice(0, 2000),
+			});
 			await db
 				.update(jobs)
 				.set({ status: 'failed', output: `Modal runner rejected: HTTP ${resp.status}`, endedAt: new Date() })
@@ -240,19 +217,15 @@ jobsRouter.post('/experiment/:projectId/run', async (req, res) => {
 			.set({ status: 'running', startedAt: new Date() })
 			.where(and(eq(jobs.id, jobId), eq(jobs.status, 'queued')))
 			.returning({ id: jobs.id });
-		if (isDev && runningRows.length === 0) {
+		if (runningRows.length === 0) {
 			const [cur] = await db.select({ status: jobs.status }).from(jobs).where(eq(jobs.id, jobId));
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] running skipped (already transitioned)', {
+			logger.debug('jobs.run.running_skipped', {
 				traceId,
 				jobId,
 				currentStatus: cur?.status,
 			});
 		}
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.run] modal accepted', { traceId, jobId });
-		}
+		logger.info('jobs.run.modal_accepted', { traceId, jobId });
 		return res.status(200).json({ jobId, runId });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to enqueue experiment';
@@ -271,10 +244,7 @@ jobsRouter.post('/paper/:projectId/compile', async (req, res) => {
 			logAuthzDenied(req, { projectId });
 			return res.status(404).json({ error: 'Project not found' });
 		}
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[jobs] enqueue compile', { projectId });
-		}
+		logger.debug('jobs.compile.enqueue', { projectId });
 		const id = crypto.randomUUID();
 		await db.insert(jobs).values({ id, projectId, type: 'paper_compile', status: 'queued' });
 		return res.status(200).json({ jobId: id });
@@ -297,10 +267,7 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 		const expectedToken = getJobToken(job);
 		const providedToken = typeof req.body?.token === 'string' ? String(req.body.token).trim() : '';
 		if (expectedToken && providedToken !== expectedToken) {
-			if (isDev) {
-				// eslint-disable-next-line no-console
-				console.log('[jobs.presign] denied', { traceId, jobId, reason: 'invalid token' });
-			}
+			logger.warn('jobs.presign.denied', { traceId, jobId, reason: 'invalid token' });
 			return res.status(401).json({ error: 'Invalid token' });
 		}
 
@@ -310,15 +277,12 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 			return res.status(400).json({ error: 'No items provided' });
 		}
 		logger.info('job.presign', { requestId: req.requestId || null, traceId, jobId, projectId: job.projectId, count: items.length });
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.presign] start', {
-				traceId,
-				jobId,
-				count: items.length,
-				names: items.map((i) => i.fileName).slice(0, 30),
-			});
-		}
+		logger.debug('jobs.presign.start', {
+			traceId,
+			jobId,
+			count: items.length,
+			names: items.map((i) => i.fileName).slice(0, 30),
+		});
 
 		const uploads = await Promise.all(
 			items.map(async (item) => {
@@ -346,10 +310,7 @@ jobsRouter.post('/:jobId/artifacts/presign', async (req, res) => {
 			}),
 		);
 
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.presign] ok', { traceId, jobId, count: uploads.length });
-		}
+		logger.debug('jobs.presign.ok', { traceId, jobId, count: uploads.length });
 		return res.status(200).json({ uploads });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to presign uploads';
@@ -375,10 +336,7 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 		const expectedToken = getJobToken(job);
 		const providedToken = typeof req.body?.token === 'string' ? String(req.body.token).trim() : '';
 		if (expectedToken && providedToken !== expectedToken) {
-			if (isDev) {
-				// eslint-disable-next-line no-console
-				console.log('[jobs.complete] denied', { traceId, jobId, reason: 'invalid token' });
-			}
+			logger.warn('jobs.complete.denied', { traceId, jobId, reason: 'invalid token' });
 			return res.status(401).json({ error: 'Invalid token' });
 		}
 
@@ -386,17 +344,14 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 		const resultsText = typeof req.body?.resultsText === 'string' ? req.body.resultsText : '';
 		const artifacts = Array.isArray(req.body?.artifacts) ? req.body.artifacts : [];
 
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.complete] start', {
-				traceId,
-				jobId,
-				projectId: job.projectId,
-				exitCode,
-				resultsLen: resultsText.length,
-				artifactsCount: artifacts.length,
-			});
-		}
+		logger.debug('jobs.complete.start', {
+			traceId,
+			jobId,
+			projectId: job.projectId,
+			exitCode,
+			resultsLen: resultsText.length,
+			artifactsCount: artifacts.length,
+		});
 
 		const status = exitCode === 0 ? 'completed' : 'failed';
 		await db
@@ -462,10 +417,7 @@ jobsRouter.post('/:jobId/complete', async (req, res) => {
 			});
 		}
 
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[jobs.complete] done', { traceId, jobId, status });
-		}
+		logger.info('jobs.complete.done', { traceId, jobId, status });
 
 		return res.status(200).json({ ok: true });
 	} catch (err: unknown) {
@@ -503,10 +455,7 @@ jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 			logAuthzDenied(req, { projectId });
 			return res.status(404).json({ error: 'Project not found' });
 		}
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper] assembling inputs', { projectId });
-		}
+		logger.debug('paper.assembling_inputs', { projectId });
 		// Load required text files from DB
 		const designPath = 'Design/design_plan.md';
 		const expPath = 'Experimentation/experiment.py';
@@ -533,37 +482,25 @@ jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 			}),
 			first_name: process.env.PAPER_FIRST_NAME || 'Dev',
 		};
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper] calling external service', {
-				projectId,
-				designLen: design.length,
-				expLen: exp.length,
-				resultsLen: results.length,
-			});
-		}
+		logger.debug('paper.external_service_call', {
+			projectId,
+			designLen: design.length,
+			expLen: exp.length,
+			resultsLen: results.length,
+		});
 		const resp = await fetch('https://scientist.up.railway.app/create_paper', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(payload),
 		});
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper] external service response', resp);
-		}
+		logger.debug('paper.external_service_response', { projectId, status: resp.status });
 		if (!resp.ok) {
 			const txt = await resp.text();
-			if (process.env.NODE_ENV === 'development') {
-				// eslint-disable-next-line no-console
-				console.log('[paper] external service failed', { status: resp.status, body: txt.slice(0, 2000) });
-			}
+			logger.warn('paper.external_service_failed', { status: resp.status, body: txt.slice(0, 2000) });
 			return res.status(502).json({ error: 'Paper generation failed', details: `HTTP ${resp.status}` });
 		}
 		const paperTex = await resp.text();
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper] received response', { len: paperTex.length });
-		}
+		logger.debug('paper.received_response', { len: paperTex.length });
 		// Upsert Final Paper/paper.tex
 		const paperPath = 'Final Paper/paper.tex';
 		const existing = all.find((f) => f.path === paperPath && f.type === 'tex');
@@ -580,10 +517,7 @@ jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 		return res.status(200).json({ ok: true });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to generate paper';
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper] error', { error: message });
-		}
+		logger.error('paper.error', { error: message });
 		return res.status(500).json({ error: message });
 	}
 });

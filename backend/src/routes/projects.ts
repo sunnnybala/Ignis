@@ -5,10 +5,9 @@ import { db } from '../db/client';
 import { files, projects } from '../db/schema';
 import { ensureUserProfile } from '../db/userProfile';
 import { getAuthedUser, logAuthzDenied } from '../authz/ownership';
+import { logger } from '../utils/logger';
 
 export const projectsRouter = Router();
-
-const isDev = process.env.NODE_ENV === 'development';
 
 // GET /projects -> list projects for current authenticated user
 projectsRouter.get('/', async (req, res) => {
@@ -53,23 +52,17 @@ projectsRouter.post('/', async (req, res) => {
 			{ path: 'Final_Paper/paper.tex', type: 'tex', content: '' },
 			{ path: 'Final_Paper/paper_metadata.json', type: 'txt', content: '' },
 		];
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[projects.create] seed start', {
-				traceId,
-				projectId,
-				seedPaths: seed.map((s) => s.path),
-			});
-		}
+		logger.info('projects.create.seed_start', {
+			traceId,
+			projectId,
+			seedPaths: seed.map((s) => s.path),
+		});
 		for (const f of seed) {
 			await db
 				.insert(files)
 				.values({ projectId, path: f.path, type: f.type, content: f.content });
 		}
-		if (isDev) {
-			// eslint-disable-next-line no-console
-			console.log('[projects.create] seed complete', { traceId, projectId });
-		}
+		logger.info('projects.create.seed_complete', { traceId, projectId });
 
 		return res.status(201).json({ id: projectId, name, userId: user.id });
 	} catch (err: unknown) {
