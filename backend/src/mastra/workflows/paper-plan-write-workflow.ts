@@ -5,6 +5,14 @@ import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
 import { readLatestResultsTool } from '../tools/read-latest-results';
 import { getLatestResultImagesTool } from '../tools/get-latest-result-images';
+import { logger } from '../../utils/logger';
+
+function traceMeta(requestContext: any): { traceId: string | null; userId?: string; projectId?: string } {
+  const traceId = requestContext?.get?.('traceId') ? String(requestContext.get('traceId')) : null;
+  const userId = requestContext?.get?.('userId') ? String(requestContext.get('userId')) : undefined;
+  const projectId = requestContext?.get?.('projectId') ? String(requestContext.get('projectId')) : undefined;
+  return { traceId, userId, projectId };
+}
 
 function clipText(label: string, text: string, maxChars: number): string {
   const s = String(text ?? '');
@@ -72,6 +80,8 @@ const gatherPaperContextStep = createStep({
     latestRunId: z.string().nullable(),
   }),
   execute: async ({ inputData, requestContext }: any) => {
+    logger.info('workflow.paper_plan_write.gather_context.start', traceMeta(requestContext));
+
     const selectedJournal = (String(inputData?.selectedJournal ?? '').trim() || 'General').trim();
 
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
@@ -127,6 +137,13 @@ const gatherPaperContextStep = createStep({
       figuresBlock,
     ].join('\n');
 
+    logger.info('workflow.paper_plan_write.gather_context.finish', {
+      ...traceMeta(requestContext),
+      imageUrlsCount: imageUrls.length,
+      hasLatestResults: !!latestResultsText,
+      promptBundleChars: promptBundle.length,
+    });
+
     return { selectedJournal, promptBundle, imageUrls, latestRunId };
   },
 });
@@ -152,6 +169,8 @@ const planPaperStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
+
+    logger.info('workflow.paper_plan_write.plan_paper.start', traceMeta(requestContext));
 
     const agent = mastra.getAgent('paperPlannerAgent');
     if (!agent) throw new Error('paperPlannerAgent not found (is it registered in mastra/index.ts?)');
@@ -188,6 +207,12 @@ const planPaperStep = createStep({
     const parsed = plannerSchema.safeParse((res as any)?.object);
     if (!parsed.success) throw new Error('paperPlannerAgent returned invalid structured output');
 
+    logger.info('workflow.paper_plan_write.plan_paper.finish', {
+      ...traceMeta(requestContext),
+      outlineSections: parsed.data.outline.length,
+      figurePlanCount: parsed.data.figurePlan.length,
+    });
+
     return {
       selectedJournal: String(parsed.data.selectedJournal || inputData.selectedJournal).trim() || inputData.selectedJournal,
       promptBundle: inputData.promptBundle,
@@ -221,6 +246,8 @@ const writePaperStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
+
+    logger.info('workflow.paper_plan_write.write_paper.start', traceMeta(requestContext));
 
     const agent = mastra.getAgent('latexWriterAgent');
     if (!agent) throw new Error('latexWriterAgent not found (is it registered in mastra/index.ts?)');
@@ -280,6 +307,12 @@ const writePaperStep = createStep({
       { path: PATHS.paperMeta, op: 'replace', content: JSON.stringify(meta, null, 2) },
       { requestContext },
     );
+
+    logger.info('workflow.paper_plan_write.write_paper.finish', {
+      ...traceMeta(requestContext),
+      latexChars: latex.length,
+      publicationProbability,
+    });
 
     return {
       paperPlan: inputData.paperPlan,

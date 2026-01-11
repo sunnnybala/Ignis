@@ -2,6 +2,7 @@ import { Mastra } from '@mastra/core/mastra';
 import { PinoLogger } from '@mastra/loggers';
 import { LibSQLStore } from '@mastra/libsql';
 import { Observability } from '@mastra/observability';
+import { getLogLevel } from '../utils/env';
 import { noveltyRefineWorkflow } from './workflows/novelty-refine-workflow';
 import { planImplementWorkflow } from './workflows/plan-implement-workflow';
 import { paperPlanWriteWorkflow } from './workflows/paper-plan-write-workflow';
@@ -46,7 +47,7 @@ export const mastra = new Mastra({
   }),
   logger: new PinoLogger({
     name: 'Mastra',
-    level: 'info',
+    level: getLogLevel(),
   }),
   observability: new Observability({
     // Enables DefaultExporter and CloudExporter for tracing

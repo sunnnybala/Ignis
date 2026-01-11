@@ -7,6 +7,7 @@ import { db } from '../db/client';
 import { files } from '../db/schema';
 import { initSse } from '../utils/sse';
 import { getAuthedUser, getOwnedProject, logAuthzDenied } from '../authz/ownership';
+import { logger } from '../utils/logger';
 
 import { mastra } from '../mastra';
 import { type RouterPrimitiveId, type RouterStatus } from '../mastra/agents/ignis-router-agent';
@@ -198,6 +199,14 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
     requestContext.set('routerStatus', routerStatus);
     requestContext.set('traceId', traceId);
 
+    logger.info('router.chat.start', {
+      traceId,
+      projectId,
+      userId: user.id,
+      allowedPrimitives: allowedPrimitiveIds,
+      hasMessage: !!latestMessage,
+    });
+
     // Build messages for the network call.
     const messages: any[] = latestMessage ? [{ role: 'user', content: latestMessage }] : [];
 
@@ -211,19 +220,9 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
       memory: { resource: user.id, thread: projectId },
       requestContext,
     });
-    // for await (const chunk of networkRun) {
-    //   console.log(chunk.type);
-    //   if (chunk.type === "network-execution-event-step-finish") {
-    //     console.log("finish:", chunk.payload.result);
-    //   }
-    //   if (chunk.type === "routing-agent-text-delta") {
-    //     console.log("delta:", JSON.stringify(chunk, null, 2));
-    //   }
-    //   if (chunk.type === "workflow-execution-event-workflow-step-result") {
-    //     console.log(" workflow result:", JSON.stringify(chunk, null, 2));
-    //   }
 
-    // }
+    logger.debug('router.network.started', { traceId, projectId });
+
     // We don't rely on streaming semantics across beta versions; prefer the final result text.
     // If a stream is available, we still forward text deltas best-effort.
     let finalText: string | null = null;
@@ -264,6 +263,7 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
           const result = (chunk as any)?.payload?.result;
           if (typeof result === 'string') finalText = result;
           if (result && typeof result?.text === 'string') finalText = result.text;
+          logger.debug('router.network.step_finish', { traceId, hasResult: !!result });
         }
       }
     }
@@ -283,14 +283,17 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
 
     if (finalText) {
       // If we already streamed deltas, this may be a repeat; still send a final event so the client can close cleanly.
+      logger.info('router.chat.complete', { traceId, projectId, hasFinalText: true });
       sse.write({ type: 'final', text: finalText });
     } else {
+      logger.warn('router.chat.no_final_text', { traceId, projectId });
       sse.write({
         type: 'error',
         message: 'Router finished but did not return a final text. Check server logs for chunk shapes.',
       });
     }
   } catch (err: unknown) {
+    logger.error('router.chat.error', { traceId, error: err instanceof Error ? err.message : 'Failed' });
     sse.write({ type: 'error', message: err instanceof Error ? err.message : 'Failed' });
   } finally {
     sse.close();

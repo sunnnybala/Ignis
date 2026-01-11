@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { withTimeout } from './tool-utils';
+import { logger } from '../../utils/logger';
 
 type S2Author = { name?: string };
 type S2Paper = {
@@ -150,8 +151,7 @@ export const searchPapersTool = createTool({
       // Semantic Scholar error -> fall back to Exa
       const text = await resp.text().catch(() => '');
       const s2Err = `Semantic Scholar search failed (${resp.status}): ${text || resp.statusText}`;
-      // eslint-disable-next-line no-console
-      console.error('[tool.search_papers] semantic_scholar failed; falling back to exa', {
+      logger.warn('tool.search_papers.semantic_scholar_failed', {
         status: resp.status,
         query: inputData.query,
         offset,
@@ -163,8 +163,7 @@ export const searchPapersTool = createTool({
       return await searchExaFallback(inputData, toolContext, s2Err);
     } catch (err: unknown) {
       const s2Err = err instanceof Error ? err.message : String(err);
-      // eslint-disable-next-line no-console
-      console.error('[tool.search_papers] semantic_scholar failed; falling back to exa', {
+      logger.warn('tool.search_papers.semantic_scholar_failed', {
         query: inputData.query,
         offset,
         limit,
@@ -235,8 +234,7 @@ async function searchExaFallback(
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
       const exaErr = `Exa search failed (${resp.status}): ${text || resp.statusText}`;
-      // eslint-disable-next-line no-console
-      console.error('[tool.search_papers] exa fallback failed', { message: exaErr, query: inputData.query });
+      logger.warn('tool.search_papers.exa_fallback_failed', { message: exaErr, query: inputData.query });
       return { ok: false as const, errorMessage: `${semanticScholarError} | ${exaErr}`, results: [], nextCursor: null };
     }
 
@@ -273,8 +271,7 @@ async function searchExaFallback(
     return { ok: true as const, results, nextCursor };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
-    console.error('[tool.search_papers] exa fallback failed', { message: msg, query: inputData.query });
+    logger.warn('tool.search_papers.exa_fallback_failed', { message: msg, query: inputData.query });
     return { ok: false as const, errorMessage: `${semanticScholarError} | Exa fallback error: ${msg}`, results: [], nextCursor: null };
   }
 }

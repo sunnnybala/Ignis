@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose';
 import { logger } from '../utils/logger';
+import { isDev } from '../utils/env';
 
 type AuthedUser = {
 	id: string;
@@ -29,10 +30,6 @@ function classifyAuthError(err: unknown): 'missing_token' | 'expired' | 'invalid
 	const msg = String((err as any).message || '');
 	if (/exp/i.test(msg) && /expired/i.test(msg)) return 'expired';
 	return 'invalid_token';
-}
-
-function isDev(): boolean {
-	return process.env.NODE_ENV === 'development';
 }
 
 function isPublicRoute(req: Request): boolean {

@@ -4,6 +4,8 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 
+import { logger } from '../utils/logger';
+
 export class LatexCompileError extends Error {
 	public readonly log: string;
 	constructor(message: string, log: string) {
@@ -23,10 +25,6 @@ function pickTectonicBin(): string {
 	return 'tectonic';
 }
 
-function isDev(): boolean {
-	return process.env.NODE_ENV === 'development';
-}
-
 function timeoutMs(): number {
 	const v = Number(process.env.LATEX_TIMEOUT_MS || 2 * 60 * 1000);
 	return Number.isFinite(v) && v > 0 ? v : 2 * 60 * 1000;
@@ -39,10 +37,7 @@ async function runTectonic(
 	return await new Promise((resolve) => {
 		const cmd = pickTectonicBin();
 		const args = ['-X', 'compile', texFileName, '--outdir', cwd];
-		if (isDev()) {
-			// eslint-disable-next-line no-console
-			console.log('[latex] spawn', { cmd, args, cwd, timeoutMs: timeoutMs() });
-		}
+		logger.debug('latex.spawn', { cmd, args, cwd, timeoutMs: timeoutMs() });
 
 		let stdout = '';
 		let stderr = '';
@@ -52,10 +47,7 @@ async function runTectonic(
 		child.stderr.on('data', (d) => (stderr += String(d)));
 
 		const t = setTimeout(() => {
-			if (isDev()) {
-				// eslint-disable-next-line no-console
-				console.log('[latex] timeout reached, killing tectonic', { timeoutMs: timeoutMs() });
-			}
+			logger.warn('latex.timeout', { timeoutMs: timeoutMs() });
 			try {
 				child.kill('SIGKILL');
 			} catch {}
@@ -64,19 +56,13 @@ async function runTectonic(
 		child.on('error', (err) => {
 			clearTimeout(t);
 			stderr += `\n[spawn error] ${String((err as any)?.message || err)}\n`;
+			logger.error('latex.spawn_error', { err: String((err as any)?.message || err) });
 			resolve({ code: -1, stdout, stderr });
-			if (isDev()) {
-				
-				console.log('[latex] spawn error', { err: String((err as any)?.message || err) });
-			}
 		});
 
 		child.on('exit', (code) => {
 			clearTimeout(t);
-			if (isDev()) {
-				// eslint-disable-next-line no-console
-				console.log('[latex] exit', { code: code ?? -1 });
-			}
+			logger.debug('latex.exit', { code: code ?? -1 });
 			resolve({ code: code ?? -1, stdout, stderr });
 		});
 	});
@@ -90,10 +76,7 @@ export async function compileLatexToPdf(latex: string): Promise<{ pdf: Buffer; l
 	const dir = await writeTempDir('ignis-tectonic');
 	try {
 		const texName = 'paper.tex';
-		if (isDev()) {
-			// eslint-disable-next-line no-console
-			console.log('[latex] start', { dir, latexLen: (latex ?? '').length });
-		}
+		logger.info('latex.start', { dir, latexLen: (latex ?? '').length });
 		await fs.writeFile(path.join(dir, texName), latex ?? '', 'utf8');
 
 		const { code, stdout, stderr } = await runTectonic(dir, texName);
@@ -101,17 +84,11 @@ export async function compileLatexToPdf(latex: string): Promise<{ pdf: Buffer; l
 
 		const pdfPath = path.join(dir, 'paper.pdf');
 		if (code !== 0 || !fsSync.existsSync(pdfPath)) {
-			if (isDev()) {
-				// eslint-disable-next-line no-console
-				console.log('[latex] failed', { code, hasPdf: fsSync.existsSync(pdfPath) });
-			}
+			logger.error('latex.failed', { code, hasPdf: fsSync.existsSync(pdfPath) });
 			throw new LatexCompileError('LaTeX compilation failed', log);
 		}
 		const pdf = await fs.readFile(pdfPath);
-		if (isDev()) {
-			// eslint-disable-next-line no-console
-			console.log('[latex] success', { pdfBytes: pdf.byteLength });
-		}
+		logger.info('latex.success', { pdfBytes: pdf.byteLength });
 		return { pdf, log };
 	} finally {
 		try {

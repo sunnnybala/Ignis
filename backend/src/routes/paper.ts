@@ -10,6 +10,7 @@ import { getSignedUrl } from '../storage/supabaseAdapter';
 import { getAuthedUser, getOwnedProject, logAuthzDenied } from '../authz/ownership';
 import { clampInt } from '../utils/numbers';
 import { isSupportedImagePath } from '../mastra/tools/tool-utils';
+import { logger } from '../utils/logger';
 
 export const paperRouter = Router();
 
@@ -177,10 +178,7 @@ async function loadLatestJobImageUrls(projectId: string, jobId: string): Promise
 			const signedUrl = await getSignedUrl(key, ttl);
 			out.push({ path: f.path, signedUrl });
 		} catch (e: unknown) {
-			if (process.env.NODE_ENV === 'development') {
-				// eslint-disable-next-line no-console
-				console.log('[paper.images] sign failed (skipping)', { projectId, jobId, path: f.path, error: String((e as any)?.message || e) });
-			}
+			logger.debug('paper.images.sign_failed', { projectId, jobId, path: f.path, error: String((e as any)?.message || e) });
 		}
 	}
 	return out;
@@ -226,39 +224,30 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 		}
 		const selectedJournal = 'General';
 		const traceId = crypto.randomUUID();
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] start', { traceId, projectId });
-		}
+		logger.info('paper.generate.start', { traceId, projectId });
 		const { design, experiment, results, hasResults, latestResultsJobId } = await loadProjectInputs(projectId);
 		const imageUrls =
 			latestResultsJobId && latestResultsJobId.trim().length > 0 ? await loadLatestJobImageUrls(projectId, latestResultsJobId) : [];
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] inputs', {
-				traceId,
-				projectId,
-				designLen: design.length,
-				experimentLen: experiment.length,
-				resultsLen: results.length,
-				hasResults,
-				latestResultsJobId,
-				imageCount: imageUrls.length,
-			});
-		}
+		logger.debug('paper.generate.inputs', {
+			traceId,
+			projectId,
+			designLen: design.length,
+			experimentLen: experiment.length,
+			resultsLen: results.length,
+			hasResults,
+			latestResultsJobId,
+			imageCount: imageUrls.length,
+		});
 
 		const client = getOpenAI();
 		const prompt = buildGeneratePrompt({ design, experiment, results, hasResults, selectedJournal });
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] calling openai', {
-				traceId,
-				projectId,
-				model: PAPER_VISION_MODEL,
-				imageCount: imageUrls.length,
-				imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
-			});
-		}
+		logger.debug('paper.generate.openai_call', {
+			traceId,
+			projectId,
+			model: PAPER_VISION_MODEL,
+			imageCount: imageUrls.length,
+			imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
+		});
 		const userContent: any[] = [{ type: 'text', text: prompt }];
 		for (const img of imageUrls) {
 			userContent.push({ type: 'image_url', image_url: { url: img.signedUrl, detail: 'auto' } });
@@ -270,10 +259,7 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 				{ role: 'user', content: userContent as any },
 			],
 		} as any);
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] openai done', { traceId, projectId });
-		}
+		logger.debug('paper.generate.openai_done', { traceId, projectId });
 
 		const text = completion.choices?.[0]?.message?.content ?? '';
 		const parsed = parseDelimitedResponse(text);
@@ -290,17 +276,11 @@ paperRouter.post('/:projectId/generate', async (req, res) => {
 		await upsertTextFile(projectId, PAPER_PATH, 'tex', latex);
 		await upsertTextFile(projectId, META_PATH, 'txt', JSON.stringify(meta, null, 2));
 
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] complete', { traceId, projectId, latexLen: latex.length, meta });
-		}
+		logger.info('paper.generate.complete', { traceId, projectId, latexLen: latex.length, meta });
 		return res.status(200).json({ ok: true, meta });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to generate paper';
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.generate] error', { error: message });
-		}
+		logger.error('paper.generate.error', { error: message });
 		return res.status(500).json({ error: message });
 	}
 });
@@ -317,44 +297,35 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 		}
 		const journal = typeof req.body?.journal === 'string' && req.body.journal.trim().length > 0 ? req.body.journal.trim() : 'General';
 		const traceId = crypto.randomUUID();
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] start', { traceId, projectId, journal });
-		}
+		logger.info('paper.regenerate.start', { traceId, projectId, journal });
 
 		const { design, experiment, results, hasResults, paperTex, latestResultsJobId } = await loadProjectInputs(projectId);
 		const imageUrls =
 			latestResultsJobId && latestResultsJobId.trim().length > 0 ? await loadLatestJobImageUrls(projectId, latestResultsJobId) : [];
 		const currentLatex = paperTex || '\\\\documentclass{article}\\n\\\\begin{document}\\n\\\\end{document}\\n';
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] inputs', {
-				traceId,
-				projectId,
-				journal,
-				currentLatexLen: currentLatex.length,
-				designLen: design.length,
-				experimentLen: experiment.length,
-				resultsLen: results.length,
-				hasResults,
-				latestResultsJobId,
-				imageCount: imageUrls.length,
-			});
-		}
+		logger.debug('paper.regenerate.inputs', {
+			traceId,
+			projectId,
+			journal,
+			currentLatexLen: currentLatex.length,
+			designLen: design.length,
+			experimentLen: experiment.length,
+			resultsLen: results.length,
+			hasResults,
+			latestResultsJobId,
+			imageCount: imageUrls.length,
+		});
 
 		const client = getOpenAI();
 		const prompt = buildRegeneratePrompt({ currentLatex, design, experiment, results, hasResults, journal });
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] calling openai', {
-				traceId,
-				projectId,
-				journal,
-				model: PAPER_VISION_MODEL,
-				imageCount: imageUrls.length,
-				imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
-			});
-		}
+		logger.debug('paper.regenerate.openai_call', {
+			traceId,
+			projectId,
+			journal,
+			model: PAPER_VISION_MODEL,
+			imageCount: imageUrls.length,
+			imageTtlSec: clampInt(PAPER_IMAGE_URL_EXPIRES_SEC, 60, 3600),
+		});
 		const userContent: any[] = [{ type: 'text', text: prompt }];
 		for (const img of imageUrls) {
 			userContent.push({ type: 'image_url', image_url: { url: img.signedUrl, detail: 'auto' } });
@@ -366,10 +337,7 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 				{ role: 'user', content: userContent as any },
 			],
 		} as any);
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] openai done', { traceId, projectId, journal });
-		}
+		logger.debug('paper.regenerate.openai_done', { traceId, projectId, journal });
 
 		const text = completion.choices?.[0]?.message?.content ?? '';
 		const parsed = parseDelimitedResponse(text);
@@ -385,17 +353,11 @@ paperRouter.post('/:projectId/regenerate', async (req, res) => {
 		await upsertTextFile(projectId, PAPER_PATH, 'tex', latex);
 		await upsertTextFile(projectId, META_PATH, 'txt', JSON.stringify(meta, null, 2));
 
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] complete', { traceId, projectId, journal, latexLen: latex.length, meta });
-		}
+		logger.info('paper.regenerate.complete', { traceId, projectId, journal, latexLen: latex.length, meta });
 		return res.status(200).json({ ok: true, meta });
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : 'Failed to regenerate paper';
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.regenerate] error', { error: message });
-		}
+		logger.error('paper.regenerate.error', { error: message });
 		return res.status(500).json({ error: message });
 	}
 });
@@ -416,10 +378,7 @@ paperRouter.post('/:projectId/compile', async (req, res) => {
 		const all = await db.select().from(filesTable).where(eq(filesTable.projectId, projectId));
 		const paperTex = all.find((f) => f.path === PAPER_PATH && f.type === 'tex')?.content ?? '';
 		if (!paperTex || paperTex.trim().length === 0) {
-			if (process.env.NODE_ENV === 'development') {
-				// eslint-disable-next-line no-console
-				console.log('[paper.compile] empty', { traceId, projectId });
-			}
+			logger.debug('paper.compile.empty', { traceId, projectId });
 			return res.status(400).json({ error: 'paper.tex is empty' });
 		}
 
@@ -427,16 +386,13 @@ paperRouter.post('/:projectId/compile', async (req, res) => {
 
 		// Stub for later: upload to Supabase (no-op for now)
 		void log; // keep for debugging later; not returned on success
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.compile] success', {
-				traceId,
-				projectId,
-				latexLen: paperTex.length,
-				pdfBytes: pdf.byteLength,
-				ms: Date.now() - t0,
-			});
-		}
+		logger.info('paper.compile.success', {
+			traceId,
+			projectId,
+			latexLen: paperTex.length,
+			pdfBytes: pdf.byteLength,
+			ms: Date.now() - t0,
+		});
 
 		res.status(200);
 		res.setHeader('Content-Type', 'application/pdf');
@@ -444,17 +400,11 @@ paperRouter.post('/:projectId/compile', async (req, res) => {
 		return res.send(pdf);
 	} catch (err: unknown) {
 		if (err instanceof LatexCompileError) {
-			if (process.env.NODE_ENV === 'development') {
-				// eslint-disable-next-line no-console
-				console.log('[paper.compile] failed', { error: err.message });
-			}
+			logger.warn('paper.compile.failed', { error: err.message });
 			return res.status(400).json({ error: err.message, log: err.log.slice(0, 20000) });
 		}
 		const message = err instanceof Error ? err.message : 'Failed to compile LaTeX';
-		if (process.env.NODE_ENV === 'development') {
-			// eslint-disable-next-line no-console
-			console.log('[paper.compile] error', { error: message });
-		}
+		logger.error('paper.compile.error', { error: message });
 		return res.status(500).json({ error: message });
 	}
 });

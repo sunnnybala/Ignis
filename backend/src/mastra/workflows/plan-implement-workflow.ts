@@ -3,6 +3,14 @@ import { z } from 'zod';
 
 import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
+import { logger } from '../../utils/logger';
+
+function traceMeta(requestContext: any): { traceId: string | null; userId?: string; projectId?: string } {
+  const traceId = requestContext?.get?.('traceId') ? String(requestContext.get('traceId')) : null;
+  const userId = requestContext?.get?.('userId') ? String(requestContext.get('userId')) : undefined;
+  const projectId = requestContext?.get?.('projectId') ? String(requestContext.get('projectId')) : undefined;
+  return { traceId, userId, projectId };
+}
 
 function clipText(label: string, text: string, maxChars: number): string {
   const s = String(text ?? '');
@@ -60,6 +68,8 @@ const planAndDatasetStep = createStep({
   execute: async ({ mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
 
+    logger.info('workflow.plan_implement.plan_and_dataset.start', traceMeta(requestContext));
+
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
     if (!refined?.found) {
       throw new Error(`Missing required file: ${PATHS.refinedIdea}. Run novelty-refine workflow first.`);
@@ -100,6 +110,12 @@ const planAndDatasetStep = createStep({
       { requestContext },
     );
 
+    logger.info('workflow.plan_implement.plan_and_dataset.finish', {
+      ...traceMeta(requestContext),
+      designPlanChars: designPlanMd.length,
+      datasetJsonChars: datasetJsonText.length,
+    });
+
     return {
       designPlanMd,
       datasetJsonText,
@@ -132,6 +148,8 @@ const generateExperimentStep = createStep({
   }),
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
+
+    logger.info('workflow.plan_implement.generate_experiment.start', traceMeta(requestContext));
 
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
     const plan = await (readFileTool as any).execute({ path: PATHS.designPlan }, { requestContext });
@@ -185,6 +203,12 @@ const generateExperimentStep = createStep({
       { path: PATHS.requirementsTxt, op: 'replace', content: requirementsTxt },
       { requestContext },
     );
+
+    logger.info('workflow.plan_implement.generate_experiment.finish', {
+      ...traceMeta(requestContext),
+      experimentPyChars: experimentPy.length,
+      requirementsTxtChars: requirementsTxt.length,
+    });
 
     // Return the file contents so a supervisor can summarize without re-reading.
     return {
