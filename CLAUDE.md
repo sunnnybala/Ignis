@@ -45,8 +45,8 @@ modal deploy modal_runner/runner.py  # Deploy serverless function
 
 ### 13 Specialized Agents
 Router agent (`ignisRouterAgent`) dispatches to specialized agents:
-- Research: `researchAgent`, `queryBuilderAgent`, `miniReviewWorkerAgent`, `consolidateLitReviewAgent`, `consolidateNoveltyAgent`
-- Implementation: `refineIdeaAgent`, `implementationPlannerAgent`, `planImplementAgent`, `experimentCoderAgent`
+- Research: `researchAgent`, `queryBuilderAgent`, `miniReviewWorkerAgent`, `consolidateLitReviewAgent`, `consolidateNoveltyAgent` , `refineIdeaAgent`,
+- Implementation: `implementationPlannerAgent`, `planImplementAgent`, `experimentCoderAgent`
 - Paper: `paperPlannerAgent`, `latexWriterAgent`, `paperWritingAgent`
 - Utility: `vfsAgent`
 
@@ -91,10 +91,22 @@ Backend requires: `DATABASE_URL`, `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KE
 
 Frontend requires: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
-## Recent Cleanup (Jan 2026)
+## Logging
 
-Removed ~1,150 lines of dead code:
-- Old pre-Mastra agent system (`backend/src/agent/`, `routes/agent.ts`, `db/agentState.ts`)
-- Local experiment runner (`services/experimentRunner.ts`) - replaced by Modal
-- Demo/test code (weather agent/workflow, vfs test route)
-- Unused frontend code (`lib/devUser.ts`)
+Unified logging via Mastra's PinoLogger (`backend/src/utils/logger.ts`). Import and use:
+
+```typescript
+import { logger } from '../utils/logger';
+
+logger.debug('jobs.run.inputs', { traceId, projectId });  // Dev-only verbose
+logger.info('jobs.run.start', { traceId });               // Business events
+logger.warn('tool.fallback', { reason });                 // Recoverable issues
+logger.error('workflow.failed', { error });               // Failures
+```
+
+**Log levels**: `debug` | `info` | `warn` | `error`
+
+**Control via**: `LOG_LEVEL` env var (defaults to `debug` in dev, `info` in prod)
+
+**Event naming**: `{subsystem}.{operation}.{event}` (e.g., `router.chat.complete`, `workflow.novelty_refine.finish`)
+
