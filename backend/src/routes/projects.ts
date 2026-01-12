@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import { and, eq } from 'drizzle-orm';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 import { db } from '../db/client';
 import { files, projects } from '../db/schema';
 import { ensureUserProfile } from '../db/userProfile';
 import { getAuthedUser, logAuthzDenied } from '../authz/ownership';
 import { logger } from '../utils/logger';
+
+// Load user guide content at startup for seeding new projects
+const USER_GUIDE_PATH = join(__dirname, '../assets/USER_GUIDE.md');
+const userGuideContent = readFileSync(USER_GUIDE_PATH, 'utf-8');
 
 export const projectsRouter = Router();
 
@@ -37,9 +43,11 @@ projectsRouter.post('/', async (req, res) => {
 		await db.insert(projects).values({ id: projectId, userId: user.id, name });
 
 		// Seed default tree
-		// IMPORTANT: All seeded files must be empty on creation (no default templates).
+		// IMPORTANT: Artifact files must be empty on creation (no default templates).
 		// These paths are the canonical Ignis artifact structure used by the Mastra router/workflows.
+		// USER_GUIDE.md is the exception - it contains onboarding documentation.
 		const seed: Array<{ path: string; type: typeof files.$inferInsert.type; content: string }> = [
+			{ path: 'USER_GUIDE.md', type: 'md', content: userGuideContent },
 			{ path: 'Research/lit_review.txt', type: 'txt', content: '' },
 			{ path: 'Research/novelty_assessment.txt', type: 'txt', content: '' },
 			{ path: 'Research/refined_idea.txt', type: 'txt', content: '' },
