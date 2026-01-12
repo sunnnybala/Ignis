@@ -25,19 +25,23 @@ Your Idea  →  Research  →  Implementation  →  Paper
    - Include the problem you're solving, your approach, and expected outcomes
    - The more context you provide, the better the research
 
+**Good Example:**
+> "I want to explore using transformer attention mechanisms to predict protein folding stability. My hypothesis is that attention weights can capture long-range amino acid interactions better than CNNs. I expect this to improve prediction accuracy and provide interpretable attention patterns that highlight key structural interactions."
+
+**Bad Example:**
+> "bro just make me a paper on LLMs pls"
+
 2. **Clarification (if needed)**
    - If your idea is vague, Ignis will ask 2-4 clarifying questions
-   - Answer these to help focus the literature search
 
 3. **Literature review**
    - Ignis searches academic databases for related papers
-   - It analyzes how your idea relates to existing work
-   - Identifies gaps, overlaps, and novelty signals
+   - It analyzes how your idea relates to existing works and find    gaps, overlaps, and novelty signals
 
 4. **Review the outputs**
    - `Research/lit_review.txt` — Consolidated literature review
    - `Research/novelty_assessment.txt` — How novel is your idea?
-   - `Research/refined_idea.txt` — Your idea, sharpened by research
+   - `Research/refined_idea.txt` — Your idea, enhanced to improve novelty
 
 ### What to do next
 
@@ -55,16 +59,13 @@ Your Idea  →  Research  →  Implementation  →  Paper
 
 1. **Request implementation**
    - Simply ask Ignis to move to implementation
-   - It reads your refined idea automatically
 
 2. **Design planning**
    - Ignis creates an experiment design plan
    - Selects an appropriate dataset from Kaggle
-   - Documents the methodology
 
 3. **Code generation**
    - Generates `experiment.py` based on the design plan
-   - Creates `requirements.txt` for dependencies
 
 4. **Review the outputs**
    - `Design/design_plan.md` — Experiment methodology
@@ -74,7 +75,7 @@ Your Idea  →  Research  →  Implementation  →  Paper
 
 ### What to do next
 
-- **Run the experiment** using the Forge workspace
+- **Run the experiment** 
 - **Request edits** to the code or design plan
 - **Go back** to revise the research if needed
 
@@ -94,16 +95,11 @@ Your Idea  →  Research  →  Implementation  →  Paper
    - Ask Ignis to write the paper
    - Optionally specify a target journal
 
-3. **Paper planning**
-   - Ignis creates an outline based on your results
-   - Plans figure placement and section structure
-
-4. **LaTeX generation**
+3. **LaTeX generation**
    - Writes a complete paper with proper citations
-   - Includes your experimental results and figures
    - Estimates publication probability
 
-5. **Review the outputs**
+4. **Review the outputs**
    - `Final_Paper/paper.tex` — Complete LaTeX source
    - `Final_Paper/paper_metadata.json` — Journal suggestions
 
@@ -111,7 +107,6 @@ Your Idea  →  Research  →  Implementation  →  Paper
 
 - **Edit the paper** with specific requests
 - **Regenerate** with a different journal style
-- **Export** and submit to your target venue
 
 ---
 
@@ -121,16 +116,14 @@ Your Idea  →  Research  →  Implementation  →  Paper
 |-------|-------|--------|
 | Research | Your idea | Literature review, novelty assessment, refined idea |
 | Implementation | Refined idea | Design plan, dataset config, experiment code |
-| Paper | Experiment results | LaTeX paper, metadata |
+| Paper | Experiment results | LaTeX paper, Suggested Journals, publication probability |
 
 ---
-
+  
 ## Tips
 
 - **Be specific** — Detailed ideas lead to better research
 - **Review each phase** — Check outputs before moving forward
-- **Iterate freely** — Ask for revisions at any stage
-- **Trust the process** — Each phase unlocks the next
 
 ---
 
@@ -150,4 +143,6 @@ Your Idea  →  Research  →  Implementation  →  Paper
 
 ---
 
-Built with Ignis
+**Built with Ignis**
+
+Because your idea deserves better than to remain a half-finished Overleaf doc.
