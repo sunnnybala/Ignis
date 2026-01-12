@@ -5,8 +5,11 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { Editor, type OnMount } from '@monaco-editor/react'
 import { getFile, getFileUrl, saveFile, type FileRecord } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import ChatPanel from '@/components/ChatPanel'
+import MarkdownPreview from '@/components/MarkdownPreview'
 
 const EDITABLE: Array<FileRecord['type']> = ['txt', 'md', 'py', 'tex']
 
@@ -31,6 +34,7 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   const [dirty, setDirty] = useState(false)
   const [file, setFile] = useState<FileRecord | null>(null)
   const [viewerUrl, setViewerUrl] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
   const prevFileIdRef = useRef<string | undefined>(undefined)
   const saveTimerRef = useRef<number | undefined>(undefined)
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -77,6 +81,10 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
     setFile(data)
     setDirty(false)
     setSaving('idle')
+    // Reset to preview mode when opening a markdown file
+    if (data.type === 'md') {
+      setViewMode('preview')
+    }
     if (EDITABLE.includes(data.type)) {
       setEditorValue(data.content ?? '')
       setViewerUrl(null)
@@ -154,13 +162,29 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   }
 
   const headerRight = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       {!isEditable && file ? <Badge variant="secondary">Read-only</Badge> : null}
-      {saving === 'saving' ? (
-        <span className="text-xs text-muted-foreground">Saving…</span>
-      ) : saving === 'saved' ? (
-        <span className="text-xs text-muted-foreground">Saved</span>
-      ) : null}
+      <span className="text-xs text-muted-foreground w-12">
+        {saving === 'saving' ? 'Saving…' : saving === 'saved' ? 'Saved' : ''}
+      </span>
+      {file?.type === 'md' && (
+        <ButtonGroup>
+          <Button
+            variant={viewMode === 'preview' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('preview')}
+          >
+            Preview
+          </Button>
+          <Button
+            variant={viewMode === 'code' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('code')}
+          >
+            Code
+          </Button>
+        </ButtonGroup>
+      )}
     </div>
   )
 
@@ -181,7 +205,9 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
                 <Skeleton className="mt-3 h-72 w-full" />
               </div>
             ) : file ? (
-              isEditable ? (
+              file.type === 'md' && viewMode === 'preview' ? (
+                <MarkdownPreview content={editorValue} />
+              ) : isEditable ? (
                 <Editor
                   height="100%"
                   language={languageFor(file.type)}
