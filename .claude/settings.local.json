@@ -3,7 +3,9 @@
     "allow": [
       "Bash(grep:*)",
       "Bash(xargs:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:coverage:*)"
     ]
   }
 }

@@ -35,7 +35,7 @@ modal deploy modal_runner/runner.py  # Deploy serverless function
 
 ### Three-Tier Structure
 - **Backend**: Express.js API with Mastra agent orchestration, Drizzle ORM (PostgreSQL), Supabase auth/storage
-- **Frontend**: React 19 + Vite, Shadcn/Radix UI, Monaco Editor, TanStack Query
+- **Frontend**: React 19 + Vite, Shadcn, Monaco Editor, TanStack Query
 - **Modal Runner**: Python serverless GPU compute for experiment execution
 
 ### Key Workflows (Mastra)
@@ -109,4 +109,25 @@ logger.error('workflow.failed', { error });               // Failures
 **Control via**: `LOG_LEVEL` env var (defaults to `debug` in dev, `info` in prod)
 
 **Event naming**: `{subsystem}.{operation}.{event}` (e.g., `router.chat.complete`, `workflow.novelty_refine.finish`)
+
+## Testing
+
+### Backend (`/backend`)
+```bash
+npm test             # Run all tests (Vitest)
+npm run test:watch   # Watch mode
+```
+
+**Framework**: Vitest with `vi.mock()` for dependency injection
+
+**Test structure**: Co-located `*.test.ts` files next to source (e.g., `routes/files.test.ts`)
+
+**Mocking patterns**:
+- Use `vi.hoisted()` for mocks needed before module imports
+- Mock `../utils/logger` to suppress output
+- Mock `../authz/ownership` to control auth checks
+- Mock `../db/client` with chained query builders
+- Extract route handlers via `router.stack` for direct testing
+
+**Coverage**: Utils, middleware, authorization, route handlers, and services (197 tests)
 

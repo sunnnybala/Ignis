@@ -11,6 +11,9 @@
     "start": "node dist/index.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "format": "prettier -w \"**/*.{ts,tsx,js,json,md}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
     "db:reset": "node scripts/resetDb.js && npm run db:migrate",
@@ -46,6 +49,8 @@
     "@types/pg": "^8.15.6",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
+    "@vitest/coverage-v8": "^4.0.17",
+    "copyfiles": "^2.4.1",
     "drizzle-kit": "^0.31.6",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
@@ -54,6 +59,6 @@
     "prettier": "^3.6.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3",
-    "copyfiles": "^2.4.1"
+    "vitest": "^4.0.17"
   }
 }
