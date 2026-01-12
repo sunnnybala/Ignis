@@ -49,6 +49,7 @@ export default function ForgeSidebar({
   // Expanded set of folder paths
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
   const didInitExpandRef = useRef(false)
+  const didAutoSelectRef = useRef(false)
 
   // Default-expand top-level directories only once on initial data load
   useEffect(() => {
@@ -60,6 +61,16 @@ export default function ForgeSidebar({
     setExpanded(next)
     didInitExpandRef.current = true
   }, [data])
+
+  // Auto-select USER_GUIDE.md on initial load (if no file selected yet)
+  useEffect(() => {
+    if (!data || didAutoSelectRef.current || selectedFileId) return
+    didAutoSelectRef.current = true // Mark as attempted regardless of outcome
+    const guide = data.find((node) => node.kind === 'file' && node.name === 'USER_GUIDE.md')
+    if (guide?.fileId) {
+      onSelectFile?.(guide.fileId)
+    }
+  }, [data, selectedFileId, onSelectFile])
 
   const toggle = (path: string) => {
     setExpanded((prev) => {
