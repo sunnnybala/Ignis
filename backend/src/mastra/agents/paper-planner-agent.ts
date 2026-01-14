@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
 import { webSearchTool } from '../tools/web-search';
 
 export const paperPlannerAgent = new Agent({
@@ -37,7 +38,7 @@ Guidance:
 - If there are no images, return an empty figurePlan.
 - Captions should be descriptive but grounded in results.txt and code; do not invent results.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   tools: { webSearchTool },
 });
 

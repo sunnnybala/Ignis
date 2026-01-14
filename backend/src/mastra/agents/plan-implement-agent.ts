@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 
+import { geminiModel } from '../model';
 import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
 import { webSearchTool } from '../tools/web-search';
@@ -49,7 +50,7 @@ Rules (strict):
 7) After changes:
    - Briefly summarize what changed and which paths were updated.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   tools: { readFileTool, writeFileTool, webSearchTool, readLatestResultsTool },
   memory: new Memory({
     options: {

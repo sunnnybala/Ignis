@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const queryBuilderAgent = new Agent({
   id: 'query-builder-agent',
   name: 'Query Builder Agent',
@@ -25,7 +27,7 @@ Examples (format only):
 {"query":"chest x-ray pneumonia detection self-supervised learning domain adaptation label noise robust training"}
 {"query":"diffusion models medical imaging segmentation uncertainty calibration active learning"}
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

@@ -14,3 +14,8 @@ venv/
 data/
 .mastra/
 
+# GCP Service Account Keys
+*-service-account*.json
+gcp-*.json
+*.key.json
+

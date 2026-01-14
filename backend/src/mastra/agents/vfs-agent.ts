@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
 import { readFileTool } from '../tools/read-file';
 import { writeFileTool } from '../tools/write-file';
 import { webSearchTool } from '../tools/web-search';
@@ -25,7 +26,7 @@ Rules:
 ${extra ? `User instructions (testing):\n${extra}` : ''}
 `.trim();
   },
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   tools: { readFileTool, writeFileTool, webSearchTool, searchPapersTool },
 });
 

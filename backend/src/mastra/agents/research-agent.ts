@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 
+import { geminiModel } from '../model';
 import { readFileTool } from '../tools/read-file';
 import { searchPapersTool } from '../tools/search-papers';
 import { writeFileTool } from '../tools/write-file';
@@ -44,7 +45,7 @@ Rules (strict):
 7) Output to user:
 
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   tools: { readFileTool, writeFileTool, searchPapersTool },
   memory: new Memory({
     options: {

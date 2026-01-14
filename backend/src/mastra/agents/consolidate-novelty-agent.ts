@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const consolidateNoveltyAgent = new Agent({
   id: 'consolidate-novelty-agent',
   name: 'Consolidate Novelty Assessment Agent',
@@ -29,7 +31,7 @@ Suggested structure (markdown headings):
 ## Unknowns / What to Search Next
 ## References
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 
