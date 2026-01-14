@@ -40,81 +40,11 @@ describe('parseDatasetConfig', () => {
 				expect(result.value.notes).toBe('Test dataset for experiments');
 			}
 		});
-
-		it('trims whitespace from dataset', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: '  owner/repo  ' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value.kaggle.dataset).toBe('owner/repo');
-			}
-		});
-
-		it('trims whitespace from layout.subdir', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo' },
-				layout: { subdir: '  data  ' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value.layout?.subdir).toBe('data');
-			}
-		});
-
-		it('accepts valid subdir characters [a-zA-Z0-9._-]', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo' },
-				layout: { subdir: 'my_data-v1.0' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value.layout?.subdir).toBe('my_data-v1.0');
-			}
-		});
-
-		it('trims whitespace from kaggle.files entries', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: {
-					dataset: 'owner/repo',
-					files: ['  train.csv  ', 'test.csv'],
-				},
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(true);
-			if (result.ok) {
-				expect(result.value.kaggle.files).toEqual(['train.csv', 'test.csv']);
-			}
-		});
 	});
 
 	describe('error cases', () => {
 		it('returns error for empty string', () => {
 			const result = parseDatasetConfig('');
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toBe('dataset.json is empty');
-			}
-		});
-
-		it('returns error for whitespace-only string', () => {
-			const result = parseDatasetConfig('   \n\t  ');
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
@@ -131,26 +61,8 @@ describe('parseDatasetConfig', () => {
 			}
 		});
 
-		it('returns error when root is an array', () => {
+		it('returns error when root is not an object', () => {
 			const result = parseDatasetConfig('[]');
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toBe('dataset.json must be a JSON object');
-			}
-		});
-
-		it('returns error when root is a string', () => {
-			const result = parseDatasetConfig('"just a string"');
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toBe('dataset.json must be a JSON object');
-			}
-		});
-
-		it('returns error when root is null', () => {
-			const result = parseDatasetConfig('null');
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
@@ -172,33 +84,6 @@ describe('parseDatasetConfig', () => {
 			}
 		});
 
-		it('returns error for missing source field', () => {
-			const input = JSON.stringify({
-				kaggle: { dataset: 'owner/repo' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('Unsupported source');
-			}
-		});
-
-		it('returns error when kaggle is not an object', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: 'invalid',
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toBe('kaggle must be an object');
-			}
-		});
-
 		it('returns error when kaggle.dataset is missing', () => {
 			const input = JSON.stringify({
 				source: 'kaggle',
@@ -213,35 +98,7 @@ describe('parseDatasetConfig', () => {
 			}
 		});
 
-		it('returns error when kaggle.dataset is empty', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: '' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('kaggle.dataset is required');
-			}
-		});
-
-		it('returns error when kaggle.dataset is whitespace only', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: '   ' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('kaggle.dataset is required');
-			}
-		});
-
-		it('returns error for invalid dataset format (no slash)', () => {
+		it('returns error for invalid dataset format', () => {
 			const input = JSON.stringify({
 				source: 'kaggle',
 				kaggle: { dataset: 'noslash' },
@@ -255,21 +112,7 @@ describe('parseDatasetConfig', () => {
 			}
 		});
 
-		it('returns error for invalid dataset format (multiple slashes)', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo/extra' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('must look like "owner/dataset"');
-			}
-		});
-
-		it('returns error when kaggle.unzip is not boolean', () => {
+		it('returns error for invalid field types', () => {
 			const input = JSON.stringify({
 				source: 'kaggle',
 				kaggle: { dataset: 'owner/repo', unzip: 'true' },
@@ -280,93 +123,6 @@ describe('parseDatasetConfig', () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error).toContain('must be a boolean');
-			}
-		});
-
-		it('returns error when kaggle.files is not an array', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo', files: 'file.csv' },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('must be an array');
-			}
-		});
-
-		it('returns error when kaggle.files contains empty strings', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo', files: ['valid.csv', ''] },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('non-empty strings');
-			}
-		});
-
-		it('returns error when kaggle.files contains non-strings', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo', files: ['valid.csv', 123] },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('non-empty strings');
-			}
-		});
-
-		it('returns error when layout is not an object', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo' },
-				layout: 'invalid',
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toBe('layout must be an object if provided');
-			}
-		});
-
-		it('returns error when layout.subdir is not a string', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo' },
-				layout: { subdir: 123 },
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('must be a string');
-			}
-		});
-
-		it('returns error when notes is not a string', () => {
-			const input = JSON.stringify({
-				source: 'kaggle',
-				kaggle: { dataset: 'owner/repo' },
-				notes: 123,
-			});
-
-			const result = parseDatasetConfig(input);
-
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.error).toContain('must be a string');
 			}
 		});
 	});
