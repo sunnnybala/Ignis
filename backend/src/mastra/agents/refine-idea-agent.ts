@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const refineIdeaAgent = new Agent({
   id: 'refine-idea-agent',
   name: 'Refine Idea Agent',
@@ -31,7 +33,7 @@ Suggested structure (markdown headings):
 ## Risks and Mitigations
 ## Next Actions
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

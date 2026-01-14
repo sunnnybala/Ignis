@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 
+import { geminiModel } from '../model';
 import { noveltyRefineWorkflow } from '../workflows/novelty-refine-workflow';
 import { planImplementWorkflow } from '../workflows/plan-implement-workflow';
 import { paperPlanWriteWorkflow } from '../workflows/paper-plan-write-workflow';
@@ -117,7 +118,7 @@ Next steps: <3–6 bullets, phase-aware (Research → Implementation → Paper)>
 Important: Your final response MUST be a complete answer in the above format.
 `.trim();
   },
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   // Layer A enforcement (requestContext-only):
   // Dynamically expose ONLY the allowed primitives derived server-side from artifact status.
   agents: ({ requestContext }) => {

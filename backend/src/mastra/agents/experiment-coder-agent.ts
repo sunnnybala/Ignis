@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const experimentCoderAgent = new Agent({
   id: 'experiment-coder-agent',
   name: 'Experiment Coder Agent',
@@ -33,7 +35,7 @@ Requirements requirements (requirementsTxt):
 - Include the minimal set of packages needed to run experiment.py given the imports you used.
 - If experiment.py uses only the standard library, return an empty string.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

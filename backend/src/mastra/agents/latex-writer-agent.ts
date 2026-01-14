@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const latexWriterAgent = new Agent({
   id: 'latex-writer-agent',
   name: 'LaTeX Writer Agent',
@@ -35,7 +37,7 @@ LaTeX requirements:
 - Reference figures using the provided figure plan; do not invent images.
 - Do not invent numerical results; only summarize what appears in results.txt.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

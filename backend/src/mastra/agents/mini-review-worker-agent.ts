@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const miniReviewWorkerAgent = new Agent({
   id: 'mini-review-worker-agent',
   name: 'Mini Review Worker Agent',
@@ -38,7 +40,7 @@ Important:
 - Keep miniLitReviewText under ~500 words.
 - Keep miniNoveltyAssessmentText under ~350 words.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

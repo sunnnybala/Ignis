@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
 import { webSearchTool } from '../tools/web-search';
 
 export const implementationPlannerAgent = new Agent({
@@ -44,7 +45,7 @@ Dataset config requirements (datasetJson):
 
 If you cannot confidently select a dataset, set kaggle.dataset="" and explain what’s missing in datasetRationale and datasetJson.notes.
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
   tools: { webSearchTool },
 });
 

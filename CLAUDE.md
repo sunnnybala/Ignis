@@ -81,13 +81,13 @@ Project files stored hierarchically with `(projectId, path)` uniqueness. Jobs tr
 ## External Services
 
 - **Supabase**: Auth (JWT), PostgreSQL, file storage
-- **OpenAI**: Chat completions with function calling
+- **Google Vertex AI**: LLM provider for all Mastra agents (Gemini 3 Pro)
 - **Modal**: Serverless GPU for experiment.py execution
 - **Kaggle**: Dataset sourcing
 
 ## Environment Variables
 
-Backend requires: `DATABASE_URL`, `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_PRIVATE_KEY`, `CORS_ORIGIN`, `MODAL_RUNNER_URL`, `PUBLIC_BASE_URL`
+Backend requires: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_PRIVATE_KEY`, `CORS_ORIGIN`, `MODAL_RUNNER_URL`, `PUBLIC_BASE_URL`, `GOOGLE_VERTEX_PROJECT`, `GOOGLE_VERTEX_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`
 
 Frontend requires: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 

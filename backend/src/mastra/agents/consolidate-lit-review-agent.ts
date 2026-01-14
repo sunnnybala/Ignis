@@ -1,5 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 
+import { geminiModel } from '../model';
+
 export const consolidateLitReviewAgent = new Agent({
   id: 'consolidate-lit-review-agent',
   name: 'Consolidate Literature Review Agent',
@@ -27,7 +29,7 @@ Rules:
   ## References
 - Keep it concise but complete (~800-1500 words unless told otherwise).
 `.trim(),
-  model: 'google/gemini-3-pro-preview',
+  model: geminiModel,
 });
 
 

@@ -24,6 +24,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ai-sdk/google-vertex": "^4.0.15",
     "@mastra/core": "^1.0.0-beta.17",
     "@mastra/express": "^0.1.0-beta.12",
     "@mastra/libsql": "^1.0.0-beta.10",
