@@ -28,7 +28,7 @@ Core paper artifacts (preferred paths):
 - Final_Paper/paper_metadata.json
 
 Supporting artifacts (read as needed):
-- Research/refined_idea.txt
+- Research/refined_idea.md
 - Design/design_plan.md
 - Design/dataset.json
 - Experimentation/experiment.py

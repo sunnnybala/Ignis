@@ -71,9 +71,9 @@ const workerInputSchema = z.object({
 const textOutSchema = z.object({ text: z.string().min(1) });
 
 const OUTPUT_PATHS = {
-  litReview: 'Research/lit_review.txt',
-  novelty: 'Research/novelty_assessment.txt',
-  refinedIdea: 'Research/refined_idea.txt',
+  litReview: 'Research/lit_review.md',
+  novelty: 'Research/novelty_assessment.md',
+  refinedIdea: 'Research/refined_idea.md',
 } as const;
 
 /**
@@ -420,7 +420,7 @@ const consolidateLitReviewAndWriteStep = createStep({
       '',
       `MINI LITERATURE REVIEWS:\n${miniLit}`,
       '',
-      `Write a single consolidated literature review in plain text with clear headings. Do not invent citations.`,
+      `Write a single consolidated literature review in markdown with clear headings. Do not invent citations.`,
     ].join('\n');
 
     const res = await agent.generate(prompt, {
@@ -502,7 +502,7 @@ const consolidateNoveltyAndWriteStep = createStep({
       '',
       `MINI NOVELTY ASSESSMENTS:\n${miniNovelty}`,
       '',
-      `Write a single consolidated novelty assessment in plain text with clear headings. Do not invent citations.`,
+      `Write a single consolidated novelty assessment in markdown with clear headings. Do not invent citations.`,
     ].join('\n');
 
     const res = await agent.generate(prompt, {
@@ -559,7 +559,7 @@ const refineIdeaAndWriteStep = createStep({
       '',
       `CONSOLIDATED NOVELTY ASSESSMENT (from ${inputData.noveltyAssessmentPath}):\n${inputData.noveltyAssessmentText}`,
       '',
-      `Write a refined idea in plain text, grounded in the above artifacts.`,
+      `Write a refined idea in markdown format, grounded in the above artifacts.`,
     ].join('\n');
 
     const res = await agent.generate(prompt, {

@@ -48,9 +48,9 @@ projectsRouter.post('/', async (req, res) => {
 		// USER_GUIDE.md is the exception - it contains onboarding documentation.
 		const seed: Array<{ path: string; type: typeof files.$inferInsert.type; content: string }> = [
 			{ path: 'USER_GUIDE.md', type: 'md', content: userGuideContent },
-			{ path: 'Research/lit_review.txt', type: 'txt', content: '' },
-			{ path: 'Research/novelty_assessment.txt', type: 'txt', content: '' },
-			{ path: 'Research/refined_idea.txt', type: 'txt', content: '' },
+			{ path: 'Research/lit_review.md', type: 'md', content: '' },
+			{ path: 'Research/novelty_assessment.md', type: 'md', content: '' },
+			{ path: 'Research/refined_idea.md', type: 'md', content: '' },
 			{ path: 'Results/results.txt', type: 'txt', content: '' },
 			{ path: 'Design/design_plan.md', type: 'md', content: '' },
 			// Stored as 'txt' in DB (text file semantics); content must be empty.

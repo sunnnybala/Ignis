@@ -39,9 +39,9 @@ Your Idea  →  Research  →  Implementation  →  Paper
    - It analyzes how your idea relates to existing works and find    gaps, overlaps, and novelty signals
 
 4. **Review the outputs**
-   - `Research/lit_review.txt` — Consolidated literature review
-   - `Research/novelty_assessment.txt` — How novel is your idea?
-   - `Research/refined_idea.txt` — Your idea, enhanced to improve novelty
+   - `Research/lit_review.md` — Consolidated literature review
+   - `Research/novelty_assessment.md` — How novel is your idea?
+   - `Research/refined_idea.md` — Your idea, enhanced to improve novelty
 
 ### What to do next
 

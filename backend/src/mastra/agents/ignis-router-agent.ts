@@ -72,7 +72,7 @@ ALLOWED PRIMITIVES RIGHT NOW:
 ${allowedPrimitiveIds.length ? allowedPrimitiveIds.map((id) => `- ${id}`).join('\n') : '- (none)'}
 
 PROJECT READINESS (strict):
-- research_files_ready means ALL are non-empty: Research/lit_review.txt, Research/novelty_assessment.txt, Research/refined_idea.txt
+- research_files_ready means ALL are non-empty: Research/lit_review.md, Research/novelty_assessment.md, Research/refined_idea.md
 - implementation_files_ready means ALL are non-empty: Design/design_plan.md, Design/dataset.json, Experimentation/experiment.py
 - paper_files_ready means Final_Paper/paper.tex is non-empty (metadata optional)
 

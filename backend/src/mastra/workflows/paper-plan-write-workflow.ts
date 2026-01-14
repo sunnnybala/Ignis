@@ -37,7 +37,7 @@ function maxPaperImageCount(): number {
 }
 
 const PATHS = {
-  refinedIdea: 'Research/refined_idea.txt',
+  refinedIdea: 'Research/refined_idea.md',
   designPlan: 'Design/design_plan.md',
   datasetConfig: 'Design/dataset.json',
   experimentPy: 'Experimentation/experiment.py',

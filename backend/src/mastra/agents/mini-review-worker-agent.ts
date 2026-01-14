@@ -4,7 +4,7 @@ export const miniReviewWorkerAgent = new Agent({
   id: 'mini-review-worker-agent',
   name: 'Mini Review Worker Agent',
   description:
-    'Given exactly two papers and the user idea, produces a mini literature review and mini novelty assessment (plain text) plus structured signals.',
+    'Given exactly two papers and the user idea, produces a mini literature review and mini novelty assessment (markdown) plus structured signals.',
   instructions: `
 You are a research analyst. You will be given:
 - the user's idea (1-3 paragraphs)
@@ -17,7 +17,7 @@ Your job:
 
 Output rules:
 - Output MUST be valid JSON and nothing else.
-- All narrative content must be plain text (not markdown).
+- All narrative content should use markdown formatting (headings, bold, lists, etc.).
 - Do NOT invent facts beyond the provided metadata/abstracts.
 - If info is missing, say "Unknown based on provided data".
 - When referencing papers, use the provided title (and DOI/URL if present).

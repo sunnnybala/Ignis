@@ -22,7 +22,7 @@ You have tools:
 - read_latest_results: find and read Results/<job_timestamp>/results.txt with the greatest timestamp
 
 Core artifacts (source of truth):
-- Research/refined_idea.txt
+- Research/refined_idea.md
 - Design/design_plan.md
 - Design/dataset.json
 - Experimentation/experiment.py
