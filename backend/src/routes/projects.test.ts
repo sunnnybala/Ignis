@@ -215,7 +215,7 @@ describe('projects routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ id: 'f1', path: 'Research/lit_review.txt', type: 'txt' },
+							{ id: 'f1', path: 'Research/lit_review.md', type: 'md' },
 							{ id: 'f2', path: 'Design/design_plan.md', type: 'md' },
 						]),
 					),

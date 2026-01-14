@@ -20,7 +20,7 @@ function clipText(label: string, text: string, maxChars: number): string {
 }
 
 const PATHS = {
-  refinedIdea: 'Research/refined_idea.txt',
+  refinedIdea: 'Research/refined_idea.md',
   designPlan: 'Design/design_plan.md',
   datasetConfig: 'Design/dataset.json',
   experimentPy: 'Experimentation/experiment.py',
@@ -51,7 +51,7 @@ const coderOutputSchema = z.object({
 
 /**
  * Step 1:
- * - read Research/refined_idea.txt (tool)
+ * - read Research/refined_idea.md (tool)
  * - embed file contents in prompt
  * - call implementationPlannerAgent with structuredOutput + memory (resource=userId, thread=projectId)
  * - write Design/design_plan.md + Design/dataset.json (tool)

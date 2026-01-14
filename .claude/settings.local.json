@@ -6,7 +6,8 @@
       "Bash(npm run build:*)",
       "Bash(npm test:*)",
       "Bash(npm run test:coverage:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run lint)"
     ]
   }
 }

@@ -4,12 +4,12 @@ export const consolidateNoveltyAgent = new Agent({
   id: 'consolidate-novelty-agent',
   name: 'Consolidate Novelty Assessment Agent',
   description:
-    'Consolidates many mini novelty assessments into one novelty assessment artifact (plain text) grounded in provided papers.',
+    'Consolidates many mini novelty assessments into one novelty assessment artifact (markdown) grounded in provided papers.',
   instructions: `
 You are a novelty assessment specialist. You will receive multiple mini novelty assessments and paper metadata.
 
 Task:
-- Produce ONE consolidated novelty assessment in plain text (not markdown).
+- Produce ONE consolidated novelty assessment in markdown format.
 - Output MUST be valid JSON and nothing else, with schema:
   { "text": string }
 - The "text" value must be the consolidated novelty assessment content.
@@ -20,14 +20,14 @@ Rules:
 - Prefer precise, testable novelty statements.
 - Provide concrete differentiation angles (problem framing, method, data, evaluation, deployment).
 
-Suggested structure (plain text headings):
-NOVELTY SUMMARY
-CLOSEST PRIOR WORK (from provided papers)
-OVERLAPS / RISKS
-DIFFERENTIATION STRATEGIES
-EXPERIMENTS TO VALIDATE NOVELTY
-UNKNOWNs / WHAT TO SEARCH NEXT
-REFERENCES (from provided list)
+Suggested structure (markdown headings):
+## Novelty Summary
+## Closest Prior Work
+## Overlaps / Risks
+## Differentiation Strategies
+## Experiments to Validate Novelty
+## Unknowns / What to Search Next
+## References
 `.trim(),
   model: 'google/gemini-3-pro-preview',
 });

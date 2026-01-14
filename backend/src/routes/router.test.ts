@@ -161,9 +161,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 				});
 
 				const mockAgent = createMockAgent();
@@ -187,9 +187,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 					'Design/design_plan.md': true,
 					'Design/dataset.json': true,
 					'Experimentation/experiment.py': true,
@@ -216,9 +216,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 					'Design/design_plan.md': true,
 					'Design/dataset.json': true,
 					'Experimentation/experiment.py': true,
@@ -247,9 +247,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 				});
 
 				const mockAgent = createMockAgent();
@@ -275,9 +275,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 					'Design/design_plan.md': true,
 					'Design/dataset.json': true,
 					'Experimentation/experiment.py': true,
@@ -308,7 +308,7 @@ describe('router routes', () => {
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				// Only partial research files
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
+					'Research/lit_review.md': true,
 					// novelty and refined_idea are missing
 				});
 
@@ -335,9 +335,9 @@ describe('router routes', () => {
 				vi.mocked(getAuthedUser).mockReturnValue({ id: 'user-1', email: null, role: null });
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
-					'Research/novelty_assessment.txt': true,
-					'Research/refined_idea.txt': true,
+					'Research/lit_review.md': true,
+					'Research/novelty_assessment.md': true,
+					'Research/refined_idea.md': true,
 					'Design/design_plan.md': true,
 					// dataset and experiment are missing
 				});
@@ -365,7 +365,7 @@ describe('router routes', () => {
 				vi.mocked(getOwnedProject).mockResolvedValue({ id: 'proj-123' });
 				// Research not complete
 				mockFilesNonEmpty({
-					'Research/lit_review.txt': true,
+					'Research/lit_review.md': true,
 				});
 
 				const mockAgent = createMockAgent();

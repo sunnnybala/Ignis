@@ -16,9 +16,9 @@ export const routerRouter = Router();
 
 const PATHS = {
   research: {
-    litReview: 'Research/lit_review.txt',
-    novelty: 'Research/novelty_assessment.txt',
-    refinedIdea: 'Research/refined_idea.txt',
+    litReview: 'Research/lit_review.md',
+    novelty: 'Research/novelty_assessment.md',
+    refinedIdea: 'Research/refined_idea.md',
   },
   impl: {
     designPlan: 'Design/design_plan.md',

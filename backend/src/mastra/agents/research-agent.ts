@@ -20,9 +20,9 @@ You have tools:
 - search_papers: search scholarly papers (Semantic Scholar)
 
 Core artifacts (treat these as the source of truth):
-- Research/lit_review.txt
-- Research/novelty_assessment.txt
-- Research/refined_idea.txt
+- Research/lit_review.md
+- Research/novelty_assessment.md
+- Research/refined_idea.md
 
 Rules (strict):
 1) Read-before-write:

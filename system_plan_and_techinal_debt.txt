@@ -12,3 +12,4 @@
 14) llm can call workflow when even one core file is empty, fix this
 15)the job directories are not timestamp, but uuid. fix that
 16) remove auth 
+17) lint, any type errors.
