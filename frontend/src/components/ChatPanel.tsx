@@ -33,7 +33,7 @@ export default function ChatPanel({
   projectId: string
   onFileUpdate?: (ev: { path: string; op: 'append' | 'replace'; content: string }) => void
   showActions?: boolean
-  endpoint?: 'agent' | 'paper' | 'router'
+  endpoint?: 'agent' | 'router'
   beforeSend?: () => Promise<void>
 }) {
   const navigate = useNavigate()
@@ -48,6 +48,25 @@ export default function ChatPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const currentAssistantIdRef = useRef<string | null>(null)
+
+  // Load messages from localStorage on mount (shared between Forge and Athena)
+  useEffect(() => {
+    const stored = localStorage.getItem(`ignis-chat-${projectId}`)
+    if (stored) {
+      try {
+        setMessages(JSON.parse(stored) as Message[])
+      } catch {
+        // ignore invalid stored data
+      }
+    }
+  }, [projectId])
+
+  // Persist messages to localStorage on change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(`ignis-chat-${projectId}`, JSON.stringify(messages))
+    }
+  }, [messages, projectId])
 
   const scrollToBottom = () => {
     const el = listRef.current
@@ -273,10 +292,10 @@ export default function ChatPanel({
         <Button
           size="sm"
           variant="secondary"
-            onClick={() => navigate(`/athena/${projectId}?autostart=1`)}
-            disabled={isStreaming}
+          onClick={() => navigate(`/athena/${projectId}`)}
+          disabled={isStreaming}
         >
-          Generate paper
+          Edit paper
         </Button>
       </div>
       ) : null}

@@ -194,7 +194,7 @@ describe('paper routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ path: 'Final Paper/paper.tex', type: 'tex', content: '   ' },
+							{ path: 'Final_Paper/paper.tex', type: 'tex', content: '   ' },
 						]),
 					),
 				})),
@@ -218,7 +218,7 @@ describe('paper routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ path: 'Final Paper/paper.tex', type: 'tex', content: latexContent },
+							{ path: 'Final_Paper/paper.tex', type: 'tex', content: latexContent },
 						]),
 					),
 				})),
@@ -243,7 +243,7 @@ describe('paper routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ path: 'Final Paper/paper.tex', type: 'tex', content: '\\documentclass{article}' },
+							{ path: 'Final_Paper/paper.tex', type: 'tex', content: '\\documentclass{article}' },
 						]),
 					),
 				})),
@@ -271,7 +271,7 @@ describe('paper routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ path: 'Final Paper/paper.tex', type: 'tex', content: '\\invalid{latex}' },
+							{ path: 'Final_Paper/paper.tex', type: 'tex', content: '\\invalid{latex}' },
 						]),
 					),
 				})),
@@ -298,7 +298,7 @@ describe('paper routes', () => {
 				from: vi.fn(() => ({
 					where: vi.fn(() =>
 						Promise.resolve([
-							{ path: 'Final Paper/paper.tex', type: 'tex', content: '\\documentclass{article}' },
+							{ path: 'Final_Paper/paper.tex', type: 'tex', content: '\\documentclass{article}' },
 						]),
 					),
 				})),
