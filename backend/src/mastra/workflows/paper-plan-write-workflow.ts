@@ -21,20 +21,10 @@ function clipText(label: string, text: string, maxChars: number): string {
   return `${s.slice(0, half)}\n\n[... clipped ${label}: ${s.length - maxChars} chars ...]\n\n${s.slice(-half)}`;
 }
 
-function inferImageMimeTypeFromUrl(url: string): string | undefined {
-  const u = String(url || '').toLowerCase();
-  if (u.includes('.png')) return 'image/png';
-  if (u.includes('.jpg') || u.includes('.jpeg')) return 'image/jpeg';
-  if (u.includes('.webp')) return 'image/webp';
-  return undefined;
-}
-
-function maxPaperImageCount(): number {
-  // Reuse the existing env convention used by the legacy paper route if set.
-  const raw = Number(process.env.PAPER_MAX_IMAGE_COUNT || 6);
-  if (!Number.isFinite(raw)) return 6;
-  return Math.min(20, Math.max(0, Math.floor(raw)));
-}
+// NOTE: This workflow uses .stream() + manual JSON parsing instead of .generate() with structuredOutput.
+// Complex Zod schemas (nested arrays, tuples, URL validators) cause hangs with Vertex AI/Gemini + structuredOutput.
+// The streaming approach bypasses this issue and is proven to work in novelty-refine-workflow.
+// See: https://github.com/vercel/ai/issues/4412
 
 const PATHS = {
   refinedIdea: 'Research/refined_idea.md',
@@ -181,31 +171,66 @@ const planPaperStep = createStep({
       inputData.promptBundle,
       ``,
       `IMPORTANT: Only reference imageUrl values that appear in the FIGURE URLS list above.`,
+      ``,
+      `Return ONLY valid JSON matching this schema (no markdown, no explanation):`,
+      `{ "selectedJournal": string, "paperTitleCandidates": string[], "outline": [{ "sectionId": string, "bullets": string[] }], "figurePlan": [{ "figureId": string, "imageUrl": string, "caption": string, "sectionId": string }] }`,
     ].join('\n');
 
-    const cappedUrls = Array.isArray(inputData.imageUrls) ? inputData.imageUrls.slice(0, maxPaperImageCount()) : [];
-    const contentParts: any[] = [];
-    for (const url of cappedUrls) {
-      const mimeType = inferImageMimeTypeFromUrl(url);
-      // Per Mastra docs, images must be passed as multimodal parts to be "seen" by the model.
-      contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
+    // Use .stream() + manual JSON parsing to avoid Vertex AI/Gemini structured output hang
+    // with complex schemas (nested arrays, defaults, tuples, URL validators).
+    // This pattern is proven to work in novelty-refine-workflow's mini-review-worker.
+    // See: https://github.com/vercel/ai/issues/4412
+    logger.debug('workflow.paper_plan_write.plan_paper.stream_start', {
+      ...traceMeta(requestContext),
+      promptChars: prompt.length,
+    });
+
+    const response = await (agent as any).stream([{ role: 'user', content: prompt }] as any);
+
+    let raw = '';
+    let lastLogAt = Date.now();
+    let chunkCount = 0;
+
+    for await (const chunk of response.textStream as AsyncIterable<string>) {
+      raw += chunk;
+      chunkCount++;
+
+      // Log progress every 2 seconds to show streaming is working
+      const now = Date.now();
+      if (now - lastLogAt > 2000) {
+        logger.debug('workflow.paper_plan_write.plan_paper.stream_progress', {
+          ...traceMeta(requestContext),
+          chunkCount,
+          totalChars: raw.length,
+          elapsedMs: now - lastLogAt,
+        });
+        lastLogAt = now;
+      }
     }
-    contentParts.push({ type: 'text', text: prompt });
 
-    const res = await agent.generate(
-      [
-        {
-          role: 'user',
-          content: contentParts,
-        },
-      ],
-      {
-      structuredOutput: { schema: plannerSchema, errorStrategy: 'strict' },
-      } as any,
-    );
+    logger.debug('workflow.paper_plan_write.plan_paper.stream_complete', {
+      ...traceMeta(requestContext),
+      chunkCount,
+      totalChars: raw.length,
+    });
 
-    const parsed = plannerSchema.safeParse((res as any)?.object);
-    if (!parsed.success) throw new Error('paperPlannerAgent returned invalid structured output');
+    // Parse JSON defensively - handle markdown code blocks or extra text
+    let obj: unknown = null;
+    const trimmed = raw.trim();
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      const start = trimmed.indexOf('{');
+      const end = trimmed.lastIndexOf('}');
+      if (start !== -1 && end !== -1 && end > start) {
+        obj = JSON.parse(trimmed.slice(start, end + 1));
+      } else {
+        throw new Error('paperPlannerAgent stream did not return parseable JSON');
+      }
+    }
+
+    const parsed = plannerSchema.safeParse(obj);
+    if (!parsed.success) throw new Error('paperPlannerAgent returned invalid structured output: ' + parsed.error.message);
 
     logger.info('workflow.paper_plan_write.plan_paper.finish', {
       ...traceMeta(requestContext),
@@ -259,31 +284,65 @@ const writePaperStep = createStep({
       ``,
       `PAPER PLAN (JSON):`,
       JSON.stringify(inputData.paperPlan, null, 2),
+      ``,
+      `Return ONLY valid JSON matching this schema (no markdown, no explanation):`,
+      `{ "latex": string, "publicationProbability": number (0-1), "suggestedJournals": [string, string, string] }`,
     ].join('\n');
 
-    // Pass the signed URLs explicitly (threaded from Step 1) so we attach exactly the intended figures.
-    const cappedUrls = (Array.isArray(inputData.imageUrls) ? inputData.imageUrls : []).slice(0, maxPaperImageCount());
-    const contentParts: any[] = [];
-    for (const url of cappedUrls) {
-      const mimeType = inferImageMimeTypeFromUrl(url);
-      contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
+    // Use .stream() + manual JSON parsing to avoid Vertex AI/Gemini structured output hang
+    // with complex schemas (tuples). This pattern is proven in novelty-refine-workflow.
+    // See: https://github.com/vercel/ai/issues/4412
+    logger.debug('workflow.paper_plan_write.write_paper.stream_start', {
+      ...traceMeta(requestContext),
+      promptChars: prompt.length,
+    });
+
+    const response = await (agent as any).stream([{ role: 'user', content: prompt }] as any);
+
+    let raw = '';
+    let lastLogAt = Date.now();
+    let chunkCount = 0;
+
+    for await (const chunk of response.textStream as AsyncIterable<string>) {
+      raw += chunk;
+      chunkCount++;
+
+      // Log progress every 2 seconds to show streaming is working
+      const now = Date.now();
+      if (now - lastLogAt > 2000) {
+        logger.debug('workflow.paper_plan_write.write_paper.stream_progress', {
+          ...traceMeta(requestContext),
+          chunkCount,
+          totalChars: raw.length,
+          elapsedMs: now - lastLogAt,
+        });
+        lastLogAt = now;
+      }
     }
-    contentParts.push({ type: 'text', text: prompt });
 
-    const res = await agent.generate(
-      [
-        {
-          role: 'user',
-          content: contentParts,
-        },
-      ],
-      {
-      structuredOutput: { schema: latexSchema, errorStrategy: 'strict' },
-      } as any,
-    );
+    logger.debug('workflow.paper_plan_write.write_paper.stream_complete', {
+      ...traceMeta(requestContext),
+      chunkCount,
+      totalChars: raw.length,
+    });
 
-    const parsed = latexSchema.safeParse((res as any)?.object);
-    if (!parsed.success) throw new Error('latexWriterAgent returned invalid structured output');
+    // Parse JSON defensively - handle markdown code blocks or extra text
+    let obj: unknown = null;
+    const trimmed = raw.trim();
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      const start = trimmed.indexOf('{');
+      const end = trimmed.lastIndexOf('}');
+      if (start !== -1 && end !== -1 && end > start) {
+        obj = JSON.parse(trimmed.slice(start, end + 1));
+      } else {
+        throw new Error('latexWriterAgent stream did not return parseable JSON');
+      }
+    }
+
+    const parsed = latexSchema.safeParse(obj);
+    if (!parsed.success) throw new Error('latexWriterAgent returned invalid structured output: ' + parsed.error.message);
 
     const latex = String(parsed.data.latex ?? '').trim();
     if (!latex) throw new Error('latexWriterAgent returned empty latex');
