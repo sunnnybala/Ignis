@@ -12,7 +12,7 @@ export type ChatHistoryItem = { role: 'user' | 'assistant'; text: string }
  * - Heartbeats are sent as SSE comments (lines starting with ':'), which are ignored.
  */
 export async function postChatStream(
-  endpointBase: 'agent' | 'paper' | 'router',
+  endpointBase: 'agent' | 'router',
   projectId: string,
   body: { message: string; history?: ChatHistoryItem[] },
   onEvent: (ev: ChatSseEvent) => void,

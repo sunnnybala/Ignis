@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import { Editor, type OnMount } from '@monaco-editor/react'
 
@@ -9,8 +9,6 @@ import {
   getProjectTree,
   getFile,
   saveFile,
-  generateAthenaPaper,
-  regenerateAthenaPaper,
   compileAthenaPaper,
   type AthenaMeta,
   type TreeNode,
@@ -26,8 +24,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 
-const PAPER_PATH = 'Final Paper/paper.tex'
-const META_PATH = 'Final Paper/athena_meta.txt'
+const PAPER_PATH = 'Final_Paper/paper.tex'
+const META_PATH = 'Final_Paper/paper_metadata.json'
 const EDITABLE: Array<FileRecord['type']> = ['tex']
 
 function debug(...args: any[]) {
@@ -68,8 +66,6 @@ const JOURNALS = [
 
 export default function Athena() {
   const { projectId = '' } = useParams()
-  const [searchParams] = useSearchParams()
-  const autostart = searchParams.get('autostart') === '1'
 
   const [journal, setJournal] = useState<(typeof JOURNALS)[number]>('General')
   const [meta, setMeta] = useState<AthenaMeta | null>(null)
@@ -81,12 +77,11 @@ export default function Athena() {
   const [isCompiling, setIsCompiling] = useState(false)
   const saveTimerRef = useRef<number | undefined>(undefined)
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const didAutostartRef = useRef(false)
   const skipAlertAtRef = useRef<number>(0)
   const prevViewerUrlRef = useRef<string | null>(null)
 
   useEffect(() => {
-    debug('mount', { projectId, autostart })
+    debug('mount', { projectId })
     return () => debug('unmount', { projectId })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -128,68 +123,12 @@ export default function Athena() {
     onError: () => setSaving('idle'),
   })
 
-  const generateMut = useMutation({
-    mutationFn: () => generateAthenaPaper(projectId),
-    onMutate: () => {
-      debug('generate.onMutate', { projectId })
-    },
-    onSuccess: (res) => {
-      debug('generate.onSuccess', { projectId, meta: res.meta })
-      setMeta({
-        ...res.meta,
-        // hard enforce top-3
-        suggestedJournals: (res.meta.suggestedJournals || []).slice(0, 3),
-      })
-      if (res.meta?.selectedJournal) {
-        // keep dropdown constrained to our known options; otherwise ignore
-        if ((JOURNALS as readonly string[]).includes(res.meta.selectedJournal)) {
-          setJournal(res.meta.selectedJournal as any)
-        }
-      }
-      // refresh local reads
-      treeQ.refetch().catch(() => {})
-      fileQ.refetch().catch(() => {})
-      metaQ.refetch().catch(() => {})
-    },
-    onError: (err) => {
-      debug('generate.onError', { projectId, err: String((err as any)?.message || err) })
-    },
-    onSettled: () => {
-      debug('generate.onSettled', { projectId })
-    },
-  })
-
-  const regenerateMut = useMutation({
-    mutationFn: (j: string) => regenerateAthenaPaper(projectId, j),
-    onMutate: (j) => {
-      debug('regenerate.onMutate', { projectId, journal: j })
-    },
-    onSuccess: (res) => {
-      debug('regenerate.onSuccess', { projectId, meta: res.meta })
-      setMeta({
-        ...res.meta,
-        suggestedJournals: (res.meta.suggestedJournals || []).slice(0, 3),
-      })
-      treeQ.refetch().catch(() => {})
-      fileQ.refetch().catch(() => {})
-      metaQ.refetch().catch(() => {})
-    },
-    onError: (err) => {
-      debug('regenerate.onError', { projectId, err: String((err as any)?.message || err) })
-    },
-    onSettled: () => {
-      debug('regenerate.onSettled', { projectId })
-    },
-  })
-
   useEffect(() => {
     debug('mutationFlags', {
-      generatePending: generateMut.isPending,
-      regeneratePending: regenerateMut.isPending,
       saving,
       dirty,
     })
-  }, [dirty, generateMut.isPending, regenerateMut.isPending, saving])
+  }, [dirty, saving])
 
   const isEditable = useMemo(() => (file ? EDITABLE.includes(file.type) : false), [file])
 
@@ -241,7 +180,7 @@ export default function Athena() {
     }
   }, [])
 
-  const ensureSavedBeforeRegenerate = useCallback(async () => {
+  const ensureSavedBeforeAction = useCallback(async () => {
     // cancel any pending debounced save and flush immediately
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current)
@@ -249,14 +188,14 @@ export default function Athena() {
     }
     if (!file || !isEditable) return
     if (!dirty) return
-    debug('ensureSavedBeforeRegenerate: flushing save', { projectId, fileId: file.id })
+    debug('ensureSavedBeforeAction: flushing save', { projectId, fileId: file.id })
     await flushSave()
-  }, [dirty, file, flushSave, isEditable])
+  }, [dirty, file, flushSave, isEditable, projectId])
 
   const ensureSavedBeforeChat = useCallback(async () => {
-    // same rule as regenerate: persist local edits before calling LLM
-    await ensureSavedBeforeRegenerate()
-  }, [ensureSavedBeforeRegenerate])
+    // persist local edits before calling LLM
+    await ensureSavedBeforeAction()
+  }, [ensureSavedBeforeAction])
 
   const scheduleSave = useCallback(() => {
     if (!isEditable) return
@@ -286,14 +225,34 @@ export default function Athena() {
           ...parsed,
           suggestedJournals: (parsed.suggestedJournals || []).slice(0, 3),
         })
+        // Update journal dropdown if a valid journal is selected
+        if (parsed.selectedJournal && (JOURNALS as readonly string[]).includes(parsed.selectedJournal)) {
+          setJournal(parsed.selectedJournal as typeof journal)
+        }
       }
     } catch {
       debug('meta.parseFailed', { projectId })
       // ignore parsing errors (meta remains null)
     }
-  }, [metaQ.data?.content])
+  }, [metaQ.data?.content, projectId])
 
-  // Apply server-driven file updates safely (never overwrite local edits)
+  // Listen for file tree refresh events from the router endpoint
+  // This replaces the old file_update SSE handling since router uses this pattern
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail
+      if (detail?.projectId !== projectId) return
+      if (dirty) return // Don't overwrite local edits
+      debug('ignis:refresh-files-tree received, refetching', { projectId })
+      fileQ.refetch().catch(() => {})
+      metaQ.refetch().catch(() => {})
+      treeQ.refetch().catch(() => {})
+    }
+    document.addEventListener('ignis:refresh-files-tree', handler)
+    return () => document.removeEventListener('ignis:refresh-files-tree', handler)
+  }, [dirty, projectId, fileQ, metaQ, treeQ])
+
+  // Handle file updates from SSE (for backwards compatibility if router ever emits these)
   const handleFileUpdate = useCallback(
     (ev: { path: string; op: 'append' | 'replace'; content: string }) => {
       if (ev.path === PAPER_PATH) {
@@ -344,7 +303,7 @@ export default function Athena() {
       if (!projectId) return
       debug('compile.click', { projectId, dirty, saving })
       // Save local edits before compiling to ensure backend compiles the latest LaTeX.
-      await ensureSavedBeforeRegenerate()
+      await ensureSavedBeforeAction()
       debug('compile.afterSave', { projectId, dirty: false })
       setIsCompiling(true)
       const t0 = performance.now()
@@ -359,17 +318,7 @@ export default function Athena() {
     } finally {
       setIsCompiling(false)
     }
-  }, [ensureSavedBeforeRegenerate, projectId])
-
-  // Step 2: autostart generation when arriving from Forge with ?autostart=1
-  useEffect(() => {
-    if (!autostart) return
-    if (!projectId) return
-    if (didAutostartRef.current) return
-    didAutostartRef.current = true
-    debug('autostart.trigger', { projectId })
-    generateMut.mutate()
-  }, [autostart, generateMut, projectId])
+  }, [ensureSavedBeforeAction, projectId, dirty, saving])
 
   const onMount: OnMount = (editor, monaco) => {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -380,7 +329,7 @@ export default function Athena() {
   const headerRight = (
     <div className="flex items-center gap-2">
       {saving === 'saving' ? (
-        <span className="text-xs text-muted-foreground">Saving…</span>
+        <span className="text-xs text-muted-foreground">Saving...</span>
       ) : saving === 'saved' ? (
         <span className="text-xs text-muted-foreground">Saved</span>
       ) : null}
@@ -393,7 +342,7 @@ export default function Athena() {
     <main className="flex h-dvh w-full min-w-0 flex-col overflow-hidden">
       <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
         <div className="min-w-0">
-          <h1 className="text-sm font-medium truncate">Athena — {projectId}</h1>
+          <h1 className="text-sm font-medium truncate">Athena - {projectId}</h1>
           <p className="text-xs text-muted-foreground truncate">{PAPER_PATH}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -416,7 +365,7 @@ export default function Athena() {
                     onClick={() => void compilePdf()}
                     disabled={isCompiling}
                   >
-                    {isCompiling ? 'Compiling…' : 'Compile LaTeX'}
+                    {isCompiling ? 'Compiling...' : 'Compile LaTeX'}
                   </Button>
                 </div>
               </div>
@@ -446,7 +395,7 @@ export default function Athena() {
                   />
                 ) : (
                   <div className="p-4 text-sm text-muted-foreground">
-                    Couldn&apos;t find <code className="rounded bg-muted px-1 py-0.5">{PAPER_PATH}</code> in this project.
+                    No paper found. Ask the chat to write a paper for your research.
                   </div>
                 )}
               </div>
@@ -455,7 +404,7 @@ export default function Athena() {
 
           <PanelResizeHandle className="bg-border w-px" />
 
-          {/* Middle: Placeholder PDF preview + journal dropdown */}
+          {/* Middle: PDF preview + journal dropdown (display-only) */}
           <Panel defaultSize={34} minSize={20} className="min-w-0">
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
@@ -466,7 +415,7 @@ export default function Athena() {
                       Publish probability: {Math.round((meta.publicationProbability || 0) * 100)}%
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Publish: —</Badge>
+                    <Badge variant="secondary">Publish: -</Badge>
                   )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -478,17 +427,11 @@ export default function Athena() {
                       {JOURNALS.map((j) => (
                         <DropdownMenuItem
                           key={j}
-                          onClick={async () => {
-                            debug('journal.select.click', {
-                              selected: j,
-                            })
+                          onClick={() => {
+                            debug('journal.select.click', { selected: j })
                             setJournal(j)
-                            // Per your rule: if user edited latex locally, save it to DB first.
-                            await ensureSavedBeforeRegenerate()
-                            // Then call regenerate.
-                            await regenerateMut.mutateAsync(j)
+                            // Display-only: user can ask chat to reformat for this journal
                           }}
-                          // disabled={regenerateMut.isPending || generateMut.isPending}
                         >
                           {j}
                         </DropdownMenuItem>
@@ -503,17 +446,13 @@ export default function Athena() {
                     Suggested journals: {meta.suggestedJournals.slice(0, 3).join(', ')}
                   </div>
                 ) : (
-                  <div className="mb-3 text-xs text-muted-foreground">Suggested journals: —</div>
+                  <div className="mb-3 text-xs text-muted-foreground">Suggested journals: -</div>
                 )}
                 {viewerUrl ? (
                   <iframe src={viewerUrl} className="h-full w-full rounded-lg border bg-muted/20" />
                 ) : (
                   <div className="h-full w-full rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                    {generateMut.isPending
-                      ? 'Generating paper…'
-                      : regenerateMut.isPending
-                        ? 'Regenerating paper…'
-                        : 'Click “Compile LaTeX” to generate a PDF preview.'}
+                    Click "Compile LaTeX" to generate a PDF preview.
                   </div>
                 )}
               </div>
@@ -522,12 +461,12 @@ export default function Athena() {
 
           <PanelResizeHandle className="bg-border w-px" />
 
-          {/* Right: Chat */}
+          {/* Right: Chat (uses router endpoint, shared with Forge) */}
           <Panel defaultSize={33} minSize={20} className="min-w-0">
             <ChatPanel
               projectId={projectId}
               showActions={false}
-              endpoint="paper"
+              endpoint="router"
               beforeSend={ensureSavedBeforeChat}
               onFileUpdate={handleFileUpdate}
             />
@@ -537,5 +476,3 @@ export default function Athena() {
     </main>
   )
 }
-
-

@@ -444,7 +444,7 @@ jobsRouter.get('/:jobId', async (req, res) => {
 	}
 });
 
-// POST /jobs/paper/:projectId/generate -> call external create_paper and write Final Paper/paper.tex
+// POST /jobs/paper/:projectId/generate -> call external create_paper and write Final_Paper/paper.tex
 jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 	try {
 		const user = getAuthedUser(req);
@@ -501,8 +501,8 @@ jobsRouter.post('/paper/:projectId/generate', async (req, res) => {
 		}
 		const paperTex = await resp.text();
 		logger.debug('paper.received_response', { len: paperTex.length });
-		// Upsert Final Paper/paper.tex
-		const paperPath = 'Final Paper/paper.tex';
+		// Upsert Final_Paper/paper.tex
+		const paperPath = 'Final_Paper/paper.tex';
 		const existing = all.find((f) => f.path === paperPath && f.type === 'tex');
 		if (existing) {
 			await db.update(filesTable).set({ content: paperTex }).where(eq(filesTable.id, existing.id));

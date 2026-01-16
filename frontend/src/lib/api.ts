@@ -154,19 +154,6 @@ export type AthenaMeta = {
   notes?: string
 }
 
-export function generateAthenaPaper(projectId: string) {
-  return api<{ ok: true; meta: AthenaMeta }>('/paper/' + projectId + '/generate', {
-    method: 'POST',
-  })
-}
-
-export function regenerateAthenaPaper(projectId: string, journal: string) {
-  return api<{ ok: true; meta: AthenaMeta }>('/paper/' + projectId + '/regenerate', {
-    method: 'POST',
-    body: JSON.stringify({ journal }),
-  })
-}
-
 export function compileAthenaPaper(projectId: string) {
   return apiBlob('/paper/' + projectId + '/compile', {
     method: 'POST',

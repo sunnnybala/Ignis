@@ -133,7 +133,7 @@ export const files = pgTable(
 		// Example paths:
 		//   'Lit Review/review.md'
 		//   'Results/<jobId>/plot-1.png'
-		//   'Final Paper/<jobId>/paper.pdf'
+		//   'Final_Paper/<jobId>/paper.pdf'
 		path: text('path').notNull(),
 		type: fileTypeEnum('type').notNull(),
 		content: text('content'),
