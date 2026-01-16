@@ -13,3 +13,4 @@
 15)the job directories are not timestamp, but uuid. fix that
 16) remove auth 
 17) lint, any type errors.
+18) no image passed to paper writing workflow, the complex schema breaks sometime. 
