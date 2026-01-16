@@ -17,7 +17,8 @@
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
     "db:reset": "node scripts/resetDb.js && npm run db:migrate",
-    "db:studio": "drizzle-kit studio --config ./drizzle.config.ts"
+    "db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
+    "test:paper-variants": "npx tsx src/scripts/test-paper-workflow-variants.ts"
   },
   "keywords": [],
   "author": "",
