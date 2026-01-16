@@ -1,56 +1,67 @@
 # Ignis Agent Architecture Flowchart
 
 ## Main Architecture Overview
-
 ```mermaid
-flowchart TB
-    subgraph User["User Interface"]
-        U[User Message]
-    end
-
-    subgraph Router["Orchestration Layer"]
+flowchart LR
+    subgraph Orchestration["Orchestration"]
         IR[Ignis Router Agent]
-        RS{Route Decision}
     end
 
-    subgraph Phase1["Phase 1: Research"]
+    subgraph Workflows["Workflows"]
         NRW[noveltyRefineWorkflow]
-        RA[Research Agent<br/>Follow-up]
-    end
-
-    subgraph Phase2["Phase 2: Implementation"]
         PIW[planImplementWorkflow]
-        PIA[Plan & Implement Agent<br/>Follow-up]
-    end
-
-    subgraph Phase3["Phase 3: Paper Writing"]
         PPW[paperPlanWriteWorkflow]
-        PWA[Paper Writing Agent<br/>Follow-up]
     end
 
-    U --> IR
-    IR --> RS
+    subgraph PPWAgents["Paper Write Agents"]
+        PPA[Paper Planner]
+        LWA[LaTeX Writer]
+    end
+    subgraph PIWAgents["Plan Implement Agents"]
+        IPA[Implementation Planner]
+        ECA[Experiment Coder]
+    end
+    subgraph NRWAgents["Novelty Refine Agents"]
+        QBA[Query Builder]
+        MRW[Mini Review Worker]
+        CLR[Consolidate Lit Review]
+        CNA[Consolidate Novelty]
+        RIA[Refine Idea]
+    end
+    subgraph FollowUp["Follow-up Agents"]
+        RA[Research Agent]
+        PIA[Plan & Implement Agent]
+        PWA[Paper Writing Agent]
+    end
+    
+    
 
-    RS -->|"Research incomplete"| NRW
-    RS -->|"Research complete,<br/>edit needed"| RA
-    RS -->|"Implementation incomplete"| PIW
-    RS -->|"Implementation complete,<br/>edit needed"| PIA
-    RS -->|"Paper incomplete"| PPW
-    RS -->|"Paper complete,<br/>edit needed"| PWA
 
-    NRW -.->|"produces"| RF1[Research/<br/>lit_review.md<br/>novelty_assessment.md<br/>refined_idea.md]
-    PIW -.->|"produces"| RF2[Design/<br/>design_plan.md<br/>dataset.json<br/><br/>Experimentation/<br/>experiment.py<br/>requirements.txt]
-    PPW -.->|"produces"| RF3[Final_Paper/<br/>paper.tex<br/>paper_metadata.json]
+    IR --> NRW
+    IR --> PIW
+    IR --> PPW
+    
+    IR --> RA
+    IR --> PIA
+    IR --> PWA
 
-    style IR fill:#e1f5fe
-    style NRW fill:#fff3e0
-    style PIW fill:#f3e5f5
-    style PPW fill:#e8f5e9
-    style RA fill:#fff3e0
-    style PIA fill:#f3e5f5
-    style PWA fill:#e8f5e9
+    NRW --> QBA
+    NRW --> MRW
+    NRW --> CLR
+    NRW --> CNA
+    NRW --> RIA
+
+    PIW --> IPA
+    PIW --> ECA
+
+    PPW --> PPA
+    PPW --> LWA
+
+    style IR fill:#e1f5fe,stroke:#01579b
+    style NRW fill:#fff3e0,stroke:#e65100
+    style PIW fill:#f3e5f5,stroke:#7b1fa2
+    style PPW fill:#e8f5e9,stroke:#2e7d32
 ```
-
 ---
 
 ## Novelty Refine Workflow (Phase 1)
@@ -117,13 +128,13 @@ flowchart TB
     CNA --> RIA
     RIA --> RI
 
-    style QBA fill:#ffcc80
-    style MRW1 fill:#ffcc80
-    style MRW2 fill:#ffcc80
-    style MRW3 fill:#ffcc80
-    style CLR fill:#ffcc80
-    style CNA fill:#ffcc80
-    style RIA fill:#ffcc80
+    style QBA fill:#ce93d8
+    style MRW1 fill:#ce93d8
+    style MRW2 fill:#ce93d8
+    style MRW3 fill:#ce93d8
+    style CLR fill:#ce93d8
+    style CNA fill:#ce93d8
+    style RIA fill:#ce93d8
 ```
 
 ---
@@ -219,188 +230,79 @@ flowchart TB
     LWA --> PT
     LWA --> PM
 
-    style PPA fill:#a5d6a7
-    style LWA fill:#a5d6a7
+    style PPA fill:#ce93d8
+    style LWA fill:#ce93d8
 ```
 
 ---
 
-## Complete Agent Hierarchy
+## Evaluation Framework
 
-```mermaid
-flowchart LR
-    subgraph Orchestration["Orchestration"]
-        IR[Ignis Router Agent]
-    end
 
-    subgraph Workflows["Workflows"]
-        NRW[noveltyRefineWorkflow]
-        PIW[planImplementWorkflow]
-        PPW[paperPlanWriteWorkflow]
-    end
 
-    subgraph FollowUp["Follow-up Agents"]
-        RA[Research Agent]
-        PIA[Plan & Implement Agent]
-        PWA[Paper Writing Agent]
-    end
+### 1. Literature Review & Novelty Assessment
 
-    subgraph NRWAgents["Novelty Refine Agents"]
-        QBA[Query Builder]
-        MRW[Mini Review Worker]
-        CLR[Consolidate Lit Review]
-        CNA[Consolidate Novelty]
-        RIA[Refine Idea]
-    end
+> **Objective:** Validate the quality and originality of research synthesis produced by the Novelty Refine Workflow.
 
-    subgraph PIWAgents["Plan Implement Agents"]
-        IPA[Implementation Planner]
-        ECA[Experiment Coder]
-    end
+| Metric | Description | Benchmark Reference |
+|--------|-------------|---------------------|
+| **ResearcherBench Comparison** | Evaluate against 65 frontier AI research questions spanning literature review tasks | [ResearcherBench](https://arxiv.org/abs/2507.16280) |
+| **Citation Recency** | Measure % of citations from last 3 years | [Sakana AI Scientist Eval](https://arxiv.org/abs/2502.14297) |
+| **Citation Relevance** | Semantic similarity between cited papers and research topic | [IdeaBench](https://arxiv.org/html/2411.02429v1) |
+| **False Novelty Detection** | Check for misclassification of established concepts as novel | [Hidden Pitfalls Paper](https://arxiv.org/pdf/2509.08713) |
 
-    subgraph PPWAgents["Paper Write Agents"]
-        PPA[Paper Planner]
-        LWA[LaTeX Writer]
-    end
-
-    subgraph Utility["Utility"]
-        VFS[VFS Agent]
-    end
-
-    IR --> NRW
-    IR --> PIW
-    IR --> PPW
-    IR --> RA
-    IR --> PIA
-    IR --> PWA
-
-    NRW --> QBA
-    NRW --> MRW
-    NRW --> CLR
-    NRW --> CNA
-    NRW --> RIA
-
-    PIW --> IPA
-    PIW --> ECA
-
-    PPW --> PPA
-    PPW --> LWA
-
-    style IR fill:#e1f5fe,stroke:#01579b
-    style NRW fill:#fff3e0,stroke:#e65100
-    style PIW fill:#f3e5f5,stroke:#7b1fa2
-    style PPW fill:#e8f5e9,stroke:#2e7d32
-```
+**Key Outputs Evaluated:**
+- `Research/lit_review.md`
+- `Research/novelty_assessment.md`
+- `Research/refined_idea.md`
 
 ---
 
-## Tools & Data Flow
+### 2. Code Generation (experiment.py)
 
-```mermaid
-flowchart TB
-    subgraph Tools["Available Tools"]
-        SPT[searchPapersTool<br/>Semantic Scholar / Exa]
-        RFT[readFileTool<br/>VFS Read]
-        WFT[writeFileTool<br/>VFS Write]
-        WST[webSearchTool<br/>General Web]
-        RLR[readLatestResultsTool<br/>Experiment Results]
-        GLI[getLatestResultImagesTool<br/>Result Figures]
-    end
+> **Objective:** Measure the reliability and correctness of generated experiment code executed on Modal.
 
-    subgraph Agents["Agents Using Tools"]
-        RA[Research Agent]
-        PIA[Plan & Implement Agent]
-        PWA[Paper Writing Agent]
-        IPA[Implementation Planner]
-        PPA[Paper Planner]
-        VFS[VFS Agent]
-    end
+| Metric | Description | 
+|--------|-------------|
+| **Execution Success Rate** | % of experiments that run without errors on Modal | 
+| **Result Reproducibility** | Same code produces identical results across multiple runs |
+| **Resource Efficiency** | GPU utilization and runtime within expected bounds |
 
-    SPT --> RA
-    SPT --> VFS
-
-    RFT --> RA
-    RFT --> PIA
-    RFT --> PWA
-    RFT --> VFS
-
-    WFT --> RA
-    WFT --> PIA
-    WFT --> PWA
-    WFT --> VFS
-
-    WST --> PIA
-    WST --> PWA
-    WST --> IPA
-    WST --> PPA
-    WST --> VFS
-
-    RLR --> PIA
-    RLR --> PWA
-
-    GLI --> PWA
-
-    style SPT fill:#bbdefb
-    style RFT fill:#bbdefb
-    style WFT fill:#bbdefb
-    style WST fill:#bbdefb
-    style RLR fill:#bbdefb
-    style GLI fill:#bbdefb
-```
+**Key Outputs Evaluated:**
+- `Experimentation/experiment.py`
+- `Experimentation/requirements.txt`
+- `Results/<timestamp>/results.txt`
 
 ---
 
-## Phase Gates & State Machine
+### 3. Paper Generation
 
-```mermaid
-stateDiagram-v2
-    [*] --> ResearchIncomplete: New Project
+> **Objective:** Assess the quality, accuracy, and academic rigor of generated LaTeX papers.
 
-    ResearchIncomplete --> ResearchComplete: noveltyRefineWorkflow completes
-    ResearchComplete --> ResearchComplete: researchAgent (edits)
+| Metric | Description | Methodology |
+|--------|-------------|-------------|
+| **LLM Reviewer Score** | Simulated peer review using GPT-4o | [Sakana methodology](https://sakana.ai/ai-scientist-first-publication/): 5 rounds self-reflection + ensemble reviews |
+| **Factual Consistency** | Claims in paper match actual experimental results | Cross-reference `results.txt` with paper assertions |
+| **Citation Quality** | Relevance, recency, and proper attribution | Target: >10 citations median, >50% from last 5 years |
+| **Structural Completeness** | No missing figures, placeholders, or repeated sections | Automated LaTeX validation |
 
-    ResearchComplete --> ImplIncomplete: User requests implementation
-    ImplIncomplete --> ImplComplete: planImplementWorkflow completes
-    ImplComplete --> ImplComplete: planImplementAgent (edits)
-
-    ImplComplete --> PaperIncomplete: User requests paper
-    PaperIncomplete --> PaperComplete: paperPlanWriteWorkflow completes
-    PaperComplete --> PaperComplete: paperWritingAgent (edits)
-
-    note right of ResearchIncomplete
-        lit_review.md = empty
-        novelty_assessment.md = empty
-        refined_idea.md = empty
-    end note
-
-    note right of ImplIncomplete
-        design_plan.md = empty
-        dataset.json = empty
-        experiment.py = empty
-    end note
-
-    note right of PaperIncomplete
-        paper.tex = empty
-    end note
-```
+**Key Outputs Evaluated:**
+- `Final_Paper/paper.tex`
+- `Final_Paper/paper_metadata.json`
 
 ---
 
-## Summary Table
+### Cost Estimate
 
-| Agent | Category | Phase | Tools |
-|-------|----------|-------|-------|
-| **Ignis Router** | Orchestration | All | None (dispatches) |
-| **Research Agent** | Follow-up | 1 | read, write, search_papers |
-| **Plan & Implement Agent** | Follow-up | 2 | read, write, web_search, latest_results |
-| **Paper Writing Agent** | Follow-up | 3 | read, write, web_search, latest_results, images |
-| **Query Builder** | Workflow | 1 | None |
-| **Mini Review Worker** | Workflow | 1 | None |
-| **Consolidate Lit Review** | Workflow | 1 | None |
-| **Consolidate Novelty** | Workflow | 1 | None |
-| **Refine Idea** | Workflow | 1 | None |
-| **Implementation Planner** | Workflow | 2 | web_search |
-| **Experiment Coder** | Workflow | 2 | None |
-| **Paper Planner** | Workflow | 3 | web_search |
-| **LaTeX Writer** | Workflow | 3 | None |
-| **VFS Agent** | Utility | - | read, write, web_search, search_papers |
+> **Each end-to-end evaluation test costs approximately $15 in cloud credits.**
+
+- LLM API calls (Vertex AI / Gemini) across all three workflow phases
+- Modal GPU compute for experiment execution
+
+---
+
+### Real-World Validation
+
+> **We have a waitlist of 150+ users.**
+
+Our eventual goal is to have actual users validate Ignis by using it to automate their research workflows. 
