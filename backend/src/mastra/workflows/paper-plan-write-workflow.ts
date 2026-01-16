@@ -80,10 +80,13 @@ const gatherPaperContextStep = createStep({
     latestRunId: z.string().nullable(),
   }),
   execute: async ({ inputData, requestContext }: any) => {
+    const stepStartTime = Date.now();
     logger.info('workflow.paper_plan_write.gather_context.start', traceMeta(requestContext));
 
     const selectedJournal = (String(inputData?.selectedJournal ?? '').trim() || 'General').trim();
 
+    // DEBUG: Time file reads
+    const fileReadStart = Date.now();
     const refined = await (readFileTool as any).execute({ path: PATHS.refinedIdea }, { requestContext });
     if (!refined?.found) throw new Error(`Missing required file: ${PATHS.refinedIdea}. Run novelty-refine workflow first.`);
     const refinedIdeaText = clipText('refined_idea', String(refined.content ?? ''), 18_000);
@@ -91,24 +94,48 @@ const gatherPaperContextStep = createStep({
     const plan = await (readFileTool as any).execute({ path: PATHS.designPlan }, { requestContext });
     const designPlanMd = plan?.found ? clipText('design_plan', String(plan.content ?? ''), 18_000) : '';
 
-    const dataset = await (readFileTool as any).execute({ path: PATHS.datasetConfig }, { requestContext });
-    const datasetJsonText = dataset?.found ? clipText('dataset_json', String(dataset.content ?? ''), 6_000) : '';
+    // TEMPORARILY DISABLED for token debugging - uncomment to restore
+    // const dataset = await (readFileTool as any).execute({ path: PATHS.datasetConfig }, { requestContext });
+    // const datasetJsonText = dataset?.found ? clipText('dataset_json', String(dataset.content ?? ''), 6_000) : '';
+    const datasetJsonText = '(disabled for debugging)';
 
-    const exp = await (readFileTool as any).execute({ path: PATHS.experimentPy }, { requestContext });
-    const experimentPy = exp?.found ? clipText('experiment_py', String(exp.content ?? ''), 22_000) : '';
+    // TEMPORARILY DISABLED for token debugging - uncomment to restore
+    // const exp = await (readFileTool as any).execute({ path: PATHS.experimentPy }, { requestContext });
+    // const experimentPy = exp?.found ? clipText('experiment_py', String(exp.content ?? ''), 22_000) : '';
+    const experimentPy = '(disabled for debugging)';
 
-    const latestResults = await (readLatestResultsTool as any).execute({ maxChars: 120_000 }, { requestContext });
+    logger.debug('workflow.paper_plan_write.gather_context.file_reads_complete', {
+      ...traceMeta(requestContext),
+      durationMs: Date.now() - fileReadStart,
+    });
+
+    // DEBUG: Time results read
+    const resultsReadStart = Date.now();
+    const latestResults = await (readLatestResultsTool as any).execute({ maxChars: 120_0 }, { requestContext });
     const latestResultsText = latestResults?.found ? String(latestResults.content ?? '') : '';
     const latestRunId: string | null =
       latestResults?.found && typeof latestResults?.timestamp === 'string' && latestResults.timestamp.trim()
         ? latestResults.timestamp.trim()
         : null;
+    logger.debug('workflow.paper_plan_write.gather_context.results_read_complete', {
+      ...traceMeta(requestContext),
+      durationMs: Date.now() - resultsReadStart,
+      foundResults: latestResults?.found,
+      resultChars: latestResultsText.length,
+    });
 
+    // DEBUG: Time image signing (potential bottleneck)
+    const imageSignStart = Date.now();
     const imagesRes = await (getLatestResultImagesTool as any).execute({ maxCount: 20 }, { requestContext });
     const images = Array.isArray(imagesRes?.images) ? imagesRes.images : [];
     const imageUrls = images
       .map((x: any) => String(x?.signedUrl || '').trim())
       .filter((u: string) => u.length > 0);
+    logger.debug('workflow.paper_plan_write.gather_context.images_signed', {
+      ...traceMeta(requestContext),
+      durationMs: Date.now() - imageSignStart,
+      imageCount: imageUrls.length,
+    });
 
     const figuresBlock =
       imageUrls.length > 0
@@ -138,6 +165,7 @@ const gatherPaperContextStep = createStep({
     ].join('\n');
 
     logger.info('workflow.paper_plan_write.gather_context.finish', {
+      totalStepDurationMs: Date.now() - stepStartTime,
       ...traceMeta(requestContext),
       imageUrlsCount: imageUrls.length,
       hasLatestResults: !!latestResultsText,
@@ -170,6 +198,7 @@ const planPaperStep = createStep({
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
 
+    const stepStartTime = Date.now();
     logger.info('workflow.paper_plan_write.plan_paper.start', traceMeta(requestContext));
 
     const agent = mastra.getAgent('paperPlannerAgent');
@@ -183,31 +212,98 @@ const planPaperStep = createStep({
       `IMPORTANT: Only reference imageUrl values that appear in the FIGURE URLS list above.`,
     ].join('\n');
 
-    const cappedUrls = Array.isArray(inputData.imageUrls) ? inputData.imageUrls.slice(0, maxPaperImageCount()) : [];
-    const contentParts: any[] = [];
-    for (const url of cappedUrls) {
-      const mimeType = inferImageMimeTypeFromUrl(url);
-      // Per Mastra docs, images must be passed as multimodal parts to be "seen" by the model.
-      contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
+    // TEMPORARILY DISABLED images for debugging - uncomment to restore
+    // const cappedUrls = Array.isArray(inputData.imageUrls) ? inputData.imageUrls.slice(0, maxPaperImageCount()) : [];
+    // const contentParts: any[] = [];
+    // for (const url of cappedUrls) {
+    //   const mimeType = inferImageMimeTypeFromUrl(url);
+    //   // Per Mastra docs, images must be passed as multimodal parts to be "seen" by the model.
+    //   contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
+    // }
+    // contentParts.push({ type: 'text', text: prompt });
+
+    // DEBUG: Text-only mode (no images)
+    const cappedUrls: string[] = [];
+    const contentParts: any[] = [{ type: 'text', text: prompt }];
+
+    // DEBUG: Log before agent call with payload details
+    logger.info('workflow.paper_plan_write.plan_paper.agent_call.start', {
+      ...traceMeta(requestContext),
+      promptChars: prompt.length,
+      imageCount: cappedUrls.length,
+      contentPartsCount: contentParts.length,
+      debugMode: 'TEXT_ONLY_NO_IMAGES',
+    });
+    const agentCallStartTime = Date.now();
+
+    let res: any;
+    try {
+      // DEBUG: Test with raw text generation (no structured output)
+      // Using a minimal test prompt to isolate Gemini connectivity
+      // NOTE: Using simple string prompt like novelty-refine-workflow does (not message array)
+      const testPrompt = 'Return a simple JSON: {"test": "hello"}';
+      logger.info('workflow.paper_plan_write.plan_paper.DEBUG_MINIMAL_TEST', {
+        ...traceMeta(requestContext),
+        testPrompt,
+      });
+
+      // Use simple string prompt (like novelty-refine-workflow) instead of message array
+      res = await agent.generate(testPrompt);
+
+      // ORIGINAL CODE (disabled for debugging):
+      // res = await agent.generate(
+      //   [
+      //     {
+      //       role: 'user',
+      //       content: contentParts,
+      //     },
+      //   ],
+      //   {
+      //   structuredOutput: { schema: plannerSchema, errorStrategy: 'strict' },
+      //   } as any,
+      // );
+    } catch (agentError: any) {
+      logger.error('workflow.paper_plan_write.plan_paper.agent_call.error', {
+        ...traceMeta(requestContext),
+        durationMs: Date.now() - agentCallStartTime,
+        errorMessage: agentError?.message || String(agentError),
+        errorName: agentError?.name,
+        errorStack: agentError?.stack,
+      });
+      throw agentError;
     }
-    contentParts.push({ type: 'text', text: prompt });
 
-    const res = await agent.generate(
-      [
-        {
-          role: 'user',
-          content: contentParts,
-        },
-      ],
-      {
-      structuredOutput: { schema: plannerSchema, errorStrategy: 'strict' },
-      } as any,
-    );
+    // DEBUG: Log after agent call with timing
+    logger.info('workflow.paper_plan_write.plan_paper.agent_call.complete', {
+      ...traceMeta(requestContext),
+      durationMs: Date.now() - agentCallStartTime,
+      hasObject: !!(res as any)?.object,
+      hasText: !!(res as any)?.text,
+      responseKeys: res ? Object.keys(res) : [],
+      rawTextPreview: String((res as any)?.text ?? '').slice(0, 200),
+    });
 
-    const parsed = plannerSchema.safeParse((res as any)?.object);
-    if (!parsed.success) throw new Error('paperPlannerAgent returned invalid structured output');
+    // DEBUG: For now, return a dummy plan to test if the agent call itself works
+    const parsed = { success: true, data: {
+      selectedJournal: inputData.selectedJournal,
+      paperTitleCandidates: ['Debug Test Paper'],
+      outline: [{ sectionId: 'intro', bullets: ['Debug test'] }],
+      figurePlan: [],
+    }};
+
+    // ORIGINAL PARSING (disabled for debugging):
+    // const parsed = plannerSchema.safeParse((res as any)?.object);
+    // if (!parsed.success) {
+    //   logger.error('workflow.paper_plan_write.plan_paper.parse_error', {
+    //     ...traceMeta(requestContext),
+    //     zodErrors: parsed.error?.errors,
+    //     rawObject: (res as any)?.object,
+    //   });
+    //   throw new Error('paperPlannerAgent returned invalid structured output');
+    // }
 
     logger.info('workflow.paper_plan_write.plan_paper.finish', {
+      totalStepDurationMs: Date.now() - stepStartTime,
       ...traceMeta(requestContext),
       outlineSections: parsed.data.outline.length,
       figurePlanCount: parsed.data.figurePlan.length,
@@ -247,6 +343,7 @@ const writePaperStep = createStep({
   execute: async ({ inputData, mastra, requestContext }: any) => {
     if (!mastra) throw new Error('Mastra instance not available in workflow step');
 
+    const stepStartTime = Date.now();
     logger.info('workflow.paper_plan_write.write_paper.start', traceMeta(requestContext));
 
     const agent = mastra.getAgent('latexWriterAgent');
@@ -261,29 +358,70 @@ const writePaperStep = createStep({
       JSON.stringify(inputData.paperPlan, null, 2),
     ].join('\n');
 
-    // Pass the signed URLs explicitly (threaded from Step 1) so we attach exactly the intended figures.
-    const cappedUrls = (Array.isArray(inputData.imageUrls) ? inputData.imageUrls : []).slice(0, maxPaperImageCount());
-    const contentParts: any[] = [];
-    for (const url of cappedUrls) {
-      const mimeType = inferImageMimeTypeFromUrl(url);
-      contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
-    }
-    contentParts.push({ type: 'text', text: prompt });
+    // TEMPORARILY DISABLED images for debugging - uncomment to restore
+    // const cappedUrls = (Array.isArray(inputData.imageUrls) ? inputData.imageUrls : []).slice(0, maxPaperImageCount());
+    // const contentParts: any[] = [];
+    // for (const url of cappedUrls) {
+    //   const mimeType = inferImageMimeTypeFromUrl(url);
+    //   contentParts.push({ type: 'image', image: url, ...(mimeType ? { mimeType } : {}) });
+    // }
+    // contentParts.push({ type: 'text', text: prompt });
 
-    const res = await agent.generate(
-      [
+    // DEBUG: Text-only mode (no images)
+    const cappedUrls: string[] = [];
+    const contentParts: any[] = [{ type: 'text', text: prompt }];
+
+    // DEBUG: Log before agent call with payload details
+    logger.info('workflow.paper_plan_write.write_paper.agent_call.start', {
+      ...traceMeta(requestContext),
+      promptChars: prompt.length,
+      imageCount: cappedUrls.length,
+      contentPartsCount: contentParts.length,
+      debugMode: 'TEXT_ONLY_NO_IMAGES',
+    });
+    const agentCallStartTime = Date.now();
+
+    let res: any;
+    try {
+      res = await agent.generate(
+        [
+          {
+            role: 'user',
+            content: contentParts,
+          },
+        ],
         {
-          role: 'user',
-          content: contentParts,
-        },
-      ],
-      {
-      structuredOutput: { schema: latexSchema, errorStrategy: 'strict' },
-      } as any,
-    );
+        structuredOutput: { schema: latexSchema, errorStrategy: 'strict' },
+        } as any,
+      );
+    } catch (agentError: any) {
+      logger.error('workflow.paper_plan_write.write_paper.agent_call.error', {
+        ...traceMeta(requestContext),
+        durationMs: Date.now() - agentCallStartTime,
+        errorMessage: agentError?.message || String(agentError),
+        errorName: agentError?.name,
+      });
+      throw agentError;
+    }
+
+    // DEBUG: Log after agent call with timing
+    logger.info('workflow.paper_plan_write.write_paper.agent_call.complete', {
+      ...traceMeta(requestContext),
+      durationMs: Date.now() - agentCallStartTime,
+      hasObject: !!(res as any)?.object,
+      hasText: !!(res as any)?.text,
+      responseKeys: res ? Object.keys(res) : [],
+    });
 
     const parsed = latexSchema.safeParse((res as any)?.object);
-    if (!parsed.success) throw new Error('latexWriterAgent returned invalid structured output');
+    if (!parsed.success) {
+      logger.error('workflow.paper_plan_write.write_paper.parse_error', {
+        ...traceMeta(requestContext),
+        zodErrors: parsed.error?.errors,
+        rawObject: (res as any)?.object,
+      });
+      throw new Error('latexWriterAgent returned invalid structured output');
+    }
 
     const latex = String(parsed.data.latex ?? '').trim();
     if (!latex) throw new Error('latexWriterAgent returned empty latex');
@@ -309,6 +447,7 @@ const writePaperStep = createStep({
     );
 
     logger.info('workflow.paper_plan_write.write_paper.finish', {
+      totalStepDurationMs: Date.now() - stepStartTime,
       ...traceMeta(requestContext),
       latexChars: latex.length,
       publicationProbability,

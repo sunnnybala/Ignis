@@ -1,7 +1,8 @@
 import { Agent } from '@mastra/core/agent';
 
 import { geminiModel } from '../model';
-import { webSearchTool } from '../tools/web-search';
+// TEMPORARILY DISABLED for debugging - webSearchTool may be causing hangs
+// import { webSearchTool } from '../tools/web-search';
 
 export const paperPlannerAgent = new Agent({
   id: 'paper-planner-agent',
@@ -18,8 +19,6 @@ You will be given, inside the prompt:
 - experiment code
 - latest results.txt
 - a list of signed image URLs (figures) produced by the experiment
-
-You may use web_search ONLY to look up high-level formatting expectations for a journal if the journal is specific (otherwise skip).
 
 Hard rules:
 - Do NOT call read_file or write_file. The caller embeds all required content and will write outputs.
@@ -39,7 +38,8 @@ Guidance:
 - Captions should be descriptive but grounded in results.txt and code; do not invent results.
 `.trim(),
   model: geminiModel,
-  tools: { webSearchTool },
+  // TEMPORARILY DISABLED for debugging - tools may be causing workflow hangs
+  // tools: { webSearchTool },
 });
 
 

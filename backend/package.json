@@ -17,7 +17,11 @@
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
     "db:reset": "node scripts/resetDb.js && npm run db:migrate",
-    "db:studio": "drizzle-kit studio --config ./drizzle.config.ts"
+    "db:studio": "drizzle-kit studio --config ./drizzle.config.ts",
+    "test:gemini": "ts-node-dev --transpile-only src/scripts/test-gemini.ts",
+    "test:workflow": "ts-node-dev --transpile-only src/scripts/test-workflow.ts",
+    "test:agent": "ts-node-dev --transpile-only src/scripts/test-agent-isolated.ts",
+    "test:mastra": "ts-node-dev --transpile-only src/scripts/test-mastra-minimal.ts"
   },
   "keywords": [],
   "author": "",
