@@ -163,6 +163,29 @@ const generateExperimentStep = createStep({
     const designPlanText = clipText('design_plan', String(plan.content ?? ''), 24_000);
     const datasetConfigText = clipText('dataset_json', String(dataset.content ?? ''), 8_000);
 
+    // Extract verified file listing from dataset.json to pass to experiment coder
+    let fileListingBlock = '';
+    try {
+      const dsObj = JSON.parse(String(dataset.content ?? '{}'));
+      const files = dsObj.kaggle?.files;
+      if (Array.isArray(files) && files.length > 0) {
+        // Handle both string[] and {name: string}[] formats
+        const names = files.map((f: unknown) => (typeof f === 'string' ? f : (f as { name?: string })?.name ?? '')).filter(Boolean);
+        if (names.length > 0) {
+          fileListingBlock = [
+            ``,
+            `VERIFIED DATASET FILES (from Kaggle API):`,
+            ...names.map((n: string) => `  - ${n}`),
+            ``,
+            `IMPORTANT: Use ONLY these exact file paths in your code. Do NOT guess or assume other paths exist.`,
+            `If your experiment needs a file not in this list, print an error explaining what's missing.`,
+          ].join('\n');
+        }
+      }
+    } catch {
+      // Ignore JSON parse errors, proceed without file listing
+    }
+
     const agent = mastra.getAgent('experimentCoderAgent');
     if (!agent) throw new Error('experimentCoderAgent not found (is it registered in mastra/index.ts?)');
 
@@ -179,6 +202,7 @@ const generateExperimentStep = createStep({
       ``,
       `DATASET CONFIG (from ${PATHS.datasetConfig}):`,
       datasetConfigText,
+      fileListingBlock,
       ``,
       `Important: requirements.txt must list ONLY package names (one per line), no versions.`,
     ].join('\n');

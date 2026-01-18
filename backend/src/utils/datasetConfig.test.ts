@@ -272,4 +272,131 @@ describe('parseDatasetConfig', () => {
 			expect(result.ok).toBe(true);
 		});
 	});
+
+	describe('new validation fields', () => {
+		it('parses config with verifiedAt timestamp', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: {
+					dataset: 'owner/repo',
+					verifiedAt: '2025-01-18T12:00:00Z',
+				},
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				expect(result.value.kaggle.verifiedAt).toBe('2025-01-18T12:00:00Z');
+			}
+		});
+
+		it('parses config with totalSizeBytes', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: {
+					dataset: 'owner/repo',
+					totalSizeBytes: 1048576,
+				},
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				expect(result.value.kaggle.totalSizeBytes).toBe(1048576);
+			}
+		});
+
+		it('parses config with dataPattern', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: { dataset: 'owner/repo' },
+				layout: { dataPattern: 'has_subdirs' },
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				expect(result.value.layout?.dataPattern).toBe('has_subdirs');
+			}
+		});
+
+		it('rejects invalid verifiedAt type', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: {
+					dataset: 'owner/repo',
+					verifiedAt: 12345,
+				},
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error).toContain('verifiedAt');
+			}
+		});
+
+		it('rejects negative totalSizeBytes', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: {
+					dataset: 'owner/repo',
+					totalSizeBytes: -100,
+				},
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error).toContain('totalSizeBytes');
+			}
+		});
+
+		it('rejects invalid dataPattern value', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: { dataset: 'owner/repo' },
+				layout: { dataPattern: 'invalid_pattern' },
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error).toContain('dataPattern');
+			}
+		});
+
+		it('parses config with all new validation fields', () => {
+			const input = JSON.stringify({
+				source: 'kaggle',
+				kaggle: {
+					dataset: 'owner/repo',
+					files: ['train.csv', 'test.csv'],
+					verifiedAt: '2025-01-18T12:00:00Z',
+					totalSizeBytes: 2048,
+				},
+				layout: {
+					subdir: 'data',
+					dataPattern: 'flat',
+				},
+				notes: 'Validated via Kaggle API',
+			});
+
+			const result = parseDatasetConfig(input);
+
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				expect(result.value.kaggle.files).toEqual(['train.csv', 'test.csv']);
+				expect(result.value.kaggle.verifiedAt).toBe('2025-01-18T12:00:00Z');
+				expect(result.value.kaggle.totalSizeBytes).toBe(2048);
+				expect(result.value.layout?.dataPattern).toBe('flat');
+			}
+		});
+	});
 });

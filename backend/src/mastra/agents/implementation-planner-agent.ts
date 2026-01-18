@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 
 import { geminiModel } from '../model';
 import { webSearchTool } from '../tools/web-search';
+import { kaggleDatasetInfoTool } from '../tools/kaggle-dataset-info';
 
 export const implementationPlannerAgent = new Agent({
   id: 'implementation-planner-agent',
@@ -40,13 +41,25 @@ Design plan requirements (designPlanMd):
 
 Dataset config requirements (datasetJson):
 - kaggle.dataset should be the Kaggle slug if possible, e.g. "paultimothymooney/chest-xray-pneumonia"
-- layout.subdir: set to "" if unknown; otherwise include a relative subdir to the dataset root where data lives.
-- notes: include assumptions about folder structure and any manual steps.
+- kaggle.files: MUST be populated with actual file names from kaggle_dataset_info validation
+- layout.subdir: set to "" if flat structure; otherwise include a relative subdir to the dataset root where data lives
+- notes: include assumptions about folder structure and any manual steps
 
-If you cannot confidently select a dataset, set kaggle.dataset="" and explain what’s missing in datasetRationale and datasetJson.notes.
+DATASET VALIDATION (CRITICAL):
+After finding a potential Kaggle dataset via web_search, you MUST:
+1. Call kaggle_dataset_info with the dataset slug to verify it exists and is accessible
+2. If exists=false or accessible=false, search for an alternative dataset
+3. If accessible=true, populate kaggle.files with the returned file names (just the name strings)
+4. Set layout.subdir based on actual file structure (use "" if dataLayout is "flat")
+5. Include the validated file listing in your notes for the experiment coder
+
+NEVER output a dataset slug without first validating it with kaggle_dataset_info.
+If validation fails for all candidates, set kaggle.dataset="" and explain what's missing in datasetRationale.
+
+If you cannot confidently select a dataset, set kaggle.dataset="" and explain what's missing in datasetRationale and datasetJson.notes.
 `.trim(),
   model: geminiModel,
-  tools: { webSearchTool },
+  tools: { webSearchTool, kaggleDatasetInfoTool },
 });
 
 

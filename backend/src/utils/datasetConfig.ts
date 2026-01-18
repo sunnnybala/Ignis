@@ -4,9 +4,12 @@ export type DatasetConfig = {
 		dataset: string; // "owner/dataset"
 		unzip?: boolean;
 		files?: string[];
+		verifiedAt?: string; // ISO timestamp when validation occurred
+		totalSizeBytes?: number; // total dataset size from validation
 	};
 	layout?: {
 		subdir?: string;
+		dataPattern?: 'flat' | 'has_subdirs' | 'unknown'; // detected layout pattern
 	};
 	notes?: string;
 };
@@ -85,15 +88,34 @@ export function parseDatasetConfig(raw: string): DatasetConfigParseResult {
 		}
 	}
 
+	// New optional fields from validation tool
+	const verifiedAt = kaggle.verifiedAt;
+	if (verifiedAt !== undefined && typeof verifiedAt !== 'string') {
+		return { ok: false, error: 'kaggle.verifiedAt must be a string (ISO timestamp) if provided' };
+	}
+
+	const totalSizeBytes = kaggle.totalSizeBytes;
+	if (totalSizeBytes !== undefined && (typeof totalSizeBytes !== 'number' || totalSizeBytes < 0)) {
+		return { ok: false, error: 'kaggle.totalSizeBytes must be a non-negative number if provided' };
+	}
+
+	const dataPattern = isPlainObject(layout) ? layout.dataPattern : undefined;
+	if (dataPattern !== undefined && !['flat', 'has_subdirs', 'unknown'].includes(dataPattern as string)) {
+		return { ok: false, error: 'layout.dataPattern must be "flat", "has_subdirs", or "unknown" if provided' };
+	}
+
 	const value: DatasetConfig = {
 		source: 'kaggle',
 		kaggle: {
 			dataset: dataset.trim(),
 			unzip: typeof unzipRaw === 'boolean' ? unzipRaw : undefined,
 			files: Array.isArray(files) ? (files as string[]).map((f) => f.trim()) : undefined,
+			verifiedAt: typeof verifiedAt === 'string' ? verifiedAt : undefined,
+			totalSizeBytes: typeof totalSizeBytes === 'number' ? totalSizeBytes : undefined,
 		},
 		layout: {
 			subdir: subdir,
+			dataPattern: dataPattern as 'flat' | 'has_subdirs' | 'unknown' | undefined,
 		},
 		notes: typeof notes === 'string' ? notes : undefined,
 	};
