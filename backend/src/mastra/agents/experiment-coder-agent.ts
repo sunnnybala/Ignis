@@ -14,6 +14,7 @@ You will be given, inside the prompt:
 - The refined idea text (source-of-truth)
 - The implementation plan (Design/design_plan.md)
 - The dataset config (Design/dataset.json)
+- Optionally: A VERIFIED DATASET FILES listing from Kaggle API
 
 Hard rules:
 - Do NOT call read_file or write_file. The caller embeds all required file contents and will handle writing outputs.
@@ -23,11 +24,29 @@ Hard rules:
 
 Code requirements (experimentPy):
 - The value must be the full contents of a Python file for Experimentation/experiment.py.
+- It must accept a --data_dir argument via argparse for the dataset path.
 - It must be deterministic where possible (set seeds).
 - It must log progress and key metrics to stdout.
-- It must be a minimal runnable baseline aligned with the plan. Prefer standard libraries + PyTorch only if the plan clearly implies it.
-- If a dependency or dataset path is unknown, add a clear TODO comment and a safe fallback that fails fast with a helpful error message.
+- It must be a minimal runnable baseline aligned with the plan.
 - Keep the script self-contained (no hidden imports from the repo unless explicitly described in the prompt).
+
+FILE PATH HANDLING (CRITICAL):
+- If the prompt includes "VERIFIED DATASET FILES", use ONLY those exact file paths.
+- At script start, print directory contents for debugging:
+  \`\`\`python
+  import os
+  print(f"Data directory: {args.data_dir}")
+  print(f"Contents: {os.listdir(args.data_dir)}")
+  \`\`\`
+- Before loading any file, verify it exists with a helpful error:
+  \`\`\`python
+  data_path = os.path.join(args.data_dir, 'train.csv')
+  if not os.path.exists(data_path):
+      available = os.listdir(args.data_dir)
+      raise FileNotFoundError(f"Expected 'train.csv' at {data_path}, but found: {available}")
+  \`\`\`
+- If file paths are uncertain or not provided, explore the directory structure first and print what you find before loading.
+- NEVER hardcode paths like '/data/' or assume structure without verification.
 
 Requirements requirements (requirementsTxt):
 - The value must be the full contents of Experimentation/requirements.txt.
