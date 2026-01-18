@@ -260,11 +260,29 @@ async function main() {
       const toolName = payload.toolName || '';
       return toolName === 'run_experiment' || toolName === 'runExperimentTool';
     });
-    const obj = result.object as { experimentPy?: string; requirementsTxt?: string } | undefined;
+
+    // Check for output in result.object OR parse from result.text (agent may return JSON in text)
+    let obj = result.object as { experimentPy?: string; requirementsTxt?: string } | undefined;
+    if (!obj && result.text) {
+      // Try to extract JSON from text response (may be wrapped in ```json ... ```)
+      const jsonMatch = result.text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        try {
+          obj = JSON.parse(jsonMatch[1]);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+
+    // Check if smoke_test is in the generated code
+    const hasSmokeTest = obj?.experimentPy?.includes('--smoke_test') || obj?.experimentPy?.includes('smoke_test');
+
     console.log(`- Agent called any tool: ${toolCalled ? 'YES' : 'NO'}`);
     console.log(`- Agent called run_experiment: ${runExpToolCalled ? 'YES' : 'NO'}`);
     console.log(`- Generated experimentPy: ${obj?.experimentPy ? 'YES' : 'NO'}`);
     console.log(`- Generated requirementsTxt: ${obj?.requirementsTxt !== undefined ? 'YES' : 'NO'}`);
+    console.log(`- Code has --smoke_test support: ${hasSmokeTest ? 'YES' : 'NO'}`);
   } catch (error) {
     console.error('\n[ERROR]');
     console.error('-'.repeat(70));
