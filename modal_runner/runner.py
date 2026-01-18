@@ -599,3 +599,174 @@ def execute_job(
     _log("execute.end", traceId=traceId, jobId=jobId, runId=runId, projectId=projectId, exitCode=exit_code, artifactsCount=len(artifacts_meta))
 
 
+# =====================
+# Synchronous execution
+# =====================
+
+
+def _execute_experiment_sync(
+    traceId: str,
+    experimentPy: str,
+    requirementsTxt: str,
+    kaggle_slug: str,
+    unzip: bool,
+    subdir: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Shared sync execution logic - returns results directly.
+    No artifact upload or callback (caller handles persistence).
+    Used by run_sync endpoint for agent-based iteration.
+    """
+    exit_code = 1
+    stdout = ""
+    stderr = ""
+    artifacts: List[Dict[str, str]] = []
+
+    try:
+        _ensure_kaggle_auth(traceId, "sync", "sync")
+        dataset_dir = _download_dataset_if_needed(traceId, "sync", "sync", kaggle_slug, unzip)
+        data_dir = dataset_dir
+        if subdir:
+            data_dir = str(Path(dataset_dir) / subdir)
+
+        with tempfile.TemporaryDirectory(prefix="ignis-sync-") as td:
+            workdir = Path(td)
+            (workdir / "experiment.py").write_text(experimentPy, encoding="utf-8")
+
+            # Install requirements (same validation as execute_job)
+            req_raw = (requirementsTxt or "").strip()
+            if req_raw:
+                lines: List[str] = []
+                for ln in req_raw.splitlines():
+                    s = ln.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    bad = any(
+                        s.startswith(pfx)
+                        for pfx in ["-r", "--", "-e", "git+", "http://", "https://", "file:"]
+                    )
+                    bad = bad or ("==" in s) or (">=" in s) or ("<=" in s) or ("~=" in s) or ("@" in s) or ("/" in s)
+                    if bad:
+                        return {
+                            "exitCode": 1,
+                            "stdout": "",
+                            "stderr": f"Invalid requirements line: {s!r}",
+                            "artifacts": [],
+                        }
+                    lines.append(s)
+
+                if lines:
+                    (workdir / "requirements.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    _log("pip.install.start.sync", traceId=traceId, count=len(lines), pkgs=lines[:30])
+                    pip_proc = subprocess.run(
+                        ["python", "-m", "pip", "install", "--no-cache-dir", "-r", "requirements.txt"],
+                        cwd=str(workdir),
+                        capture_output=True,
+                        text=True,
+                    )
+                    _log("pip.install.end.sync", traceId=traceId, code=pip_proc.returncode)
+                    if pip_proc.returncode != 0:
+                        return {
+                            "exitCode": 1,
+                            "stdout": pip_proc.stdout or "",
+                            "stderr": f"pip install failed:\n{pip_proc.stderr or ''}",
+                            "artifacts": [],
+                        }
+
+            # Run experiment
+            _log("experiment.exec.start.sync", traceId=traceId, data_dir=data_dir)
+            t0 = time.time()
+            proc = subprocess.run(
+                ["python", "experiment.py", "--data_dir", data_dir],
+                cwd=str(workdir),
+                capture_output=True,
+                text=True,
+            )
+            ms = int((time.time() - t0) * 1000)
+            exit_code = proc.returncode
+            stdout = _truncate(proc.stdout or "", MAX_LOG_CHARS)
+            stderr = _truncate(proc.stderr or "", MAX_LOG_CHARS)
+            _log("experiment.exec.end.sync", traceId=traceId, exitCode=exit_code, ms=ms)
+
+            # Collect artifact names (no upload in sync mode)
+            for p in workdir.iterdir():
+                if not p.is_file() or p.name == "experiment.py":
+                    continue
+                if p.suffix.lower() in [".png", ".csv"]:
+                    artifacts.append({
+                        "name": p.name,
+                        "type": "image" if p.suffix.lower() == ".png" else "csv",
+                    })
+
+    except Exception as e:
+        stderr = f"Runner error: {type(e).__name__}: {str(e)}"
+        exit_code = 1
+
+    return {
+        "exitCode": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "artifacts": artifacts,
+    }
+
+
+@app.function(
+    image=image,
+    secrets=[kaggle_secret],
+    volumes={DATASET_MOUNT: dataset_vol},
+    timeout=60 * 30,  # 30 min max for sync execution
+)
+@modal.fastapi_endpoint(method="POST", label="run-sync")
+def run_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    POST /run-sync
+    Synchronous execution - blocks until complete and returns results directly.
+    Used by the run_experiment tool for agent-based iteration.
+
+    Payload: { experimentPy, requirementsTxt, datasetJson, traceId? }
+    Returns: { exitCode, stdout, stderr, artifacts }
+
+    Key differences from async /run:
+    - No jobId, jobToken, presignUrl, completeUrl required
+    - Returns results directly in response body
+    - No artifact upload (just returns names)
+    - Shorter timeout (30 min vs 1 hour)
+    """
+    import importlib
+    HTTPException = importlib.import_module("fastapi").HTTPException
+
+    traceId = str(payload.get("traceId") or "").strip() or str(_now_ms())
+
+    # Minimal validation (no jobId/callbacks needed for sync mode)
+    experimentPy = str(payload.get("experimentPy") or "")
+    requirementsTxt = str(payload.get("requirementsTxt") or "")
+    datasetJson = str(payload.get("datasetJson") or "")
+
+    _log("run_sync.received", traceId=traceId)
+
+    if not experimentPy.strip():
+        raise HTTPException(status_code=400, detail="experimentPy is empty")
+    if not datasetJson.strip():
+        raise HTTPException(status_code=400, detail="datasetJson is empty")
+
+    try:
+        kaggle_slug, unzip, subdir = _parse_dataset_json(datasetJson)
+    except Exception as e:
+        _log("run_sync.validation.error", traceId=traceId, message=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _log("run_sync.start", traceId=traceId, slug=kaggle_slug, unzip=unzip, subdir=subdir)
+
+    # Execute synchronously (reuse shared logic)
+    result = _execute_experiment_sync(
+        traceId=traceId,
+        experimentPy=experimentPy,
+        requirementsTxt=requirementsTxt,
+        kaggle_slug=kaggle_slug,
+        unzip=unzip,
+        subdir=subdir,
+    )
+
+    _log("run_sync.end", traceId=traceId, exitCode=result["exitCode"], artifactsCount=len(result.get("artifacts", [])))
+
+    return result
