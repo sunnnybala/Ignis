@@ -673,11 +673,11 @@ def _execute_experiment_sync(
                             "artifacts": [],
                         }
 
-            # Run experiment
-            _log("experiment.exec.start.sync", traceId=traceId, data_dir=data_dir)
+            # Run experiment with --smoke_test for fast validation
+            _log("experiment.exec.start.sync", traceId=traceId, data_dir=data_dir, smoke_test=True)
             t0 = time.time()
             proc = subprocess.run(
-                ["python", "experiment.py", "--data_dir", data_dir],
+                ["python", "experiment.py", "--data_dir", data_dir, "--smoke_test"],
                 cwd=str(workdir),
                 capture_output=True,
                 text=True,
