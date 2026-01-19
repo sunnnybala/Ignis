@@ -38,6 +38,18 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   const prevFileIdRef = useRef<string | undefined>(undefined)
   const saveTimerRef = useRef<number | undefined>(undefined)
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const editorValueRef = useRef<string>('')
+  const dirtyRef = useRef(false)
+
+  const updateEditorValue = useCallback((value: string) => {
+    setEditorValue(value)
+    editorValueRef.current = value
+  }, [])
+
+  const updateDirty = useCallback((value: boolean) => {
+    setDirty(value)
+    dirtyRef.current = value
+  }, [])
 
   const { data, isLoading } = useQuery({
     queryKey: ['file', selectedFileId],
@@ -54,12 +66,12 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   const isEditable = useMemo(() => (file ? EDITABLE.includes(file.type) : false), [file])
 
   const flushSave = useCallback(() => {
-    if (!file || !isEditable || !dirty) return
-    const content = editorValue ?? ''
+    if (!file || !isEditable || !dirtyRef.current) return
+    const content = editorValueRef.current
     setSaving('saving')
     saveMut.mutate({ id: file.id, content })
-    setDirty(false)
-  }, [dirty, editorValue, file, isEditable, saveMut])
+    updateDirty(false)
+  }, [file, isEditable, saveMut, updateDirty])
 
   // Load file into editor/viewer when selection changes
   useEffect(() => {
@@ -73,23 +85,23 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   useEffect(() => {
     if (!data) {
       setFile(null)
-      setEditorValue('')
+      updateEditorValue('')
       setViewerUrl(null)
-      setDirty(false)
+      updateDirty(false)
       return
     }
     setFile(data)
-    setDirty(false)
+    updateDirty(false)
     setSaving('idle')
     // Reset to preview mode when opening a markdown file
     if (data.type === 'md') {
       setViewMode('preview')
     }
     if (EDITABLE.includes(data.type)) {
-      setEditorValue(data.content ?? '')
+      updateEditorValue(data.content ?? '')
       setViewerUrl(null)
     } else {
-      setEditorValue('')
+      updateEditorValue('')
       // Load signed URL for pdf/img
       if (data.type === 'pdf' || data.type === 'img') {
         getFileUrl(data.id).then((res) => setViewerUrl(res.signedUrl)).catch(() => setViewerUrl(null))
@@ -97,18 +109,18 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
         setViewerUrl(null)
       }
     }
-  }, [data])
+  }, [data, updateDirty, updateEditorValue])
 
   // Debounced save on content change
   const scheduleSave = useCallback(() => {
     if (!isEditable) return
-    setDirty(true)
+    updateDirty(true)
     setSaving('idle')
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => {
       flushSave()
     }, 1000)
-  }, [flushSave, isEditable])
+  }, [flushSave, isEditable, updateDirty])
 
   // Apply server-driven file updates when safe (not dirty and editable)
   const handleFileUpdate = useCallback(
@@ -123,14 +135,14 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
         saveTimerRef.current = undefined
       }
       if (ev.op === 'replace') {
-        setEditorValue(ev.content)
+        updateEditorValue(ev.content)
       } else {
-        setEditorValue((prev) => (prev ?? '') + ev.content)
+        updateEditorValue((editorValueRef.current ?? '') + ev.content)
       }
-      setDirty(false)
+      updateDirty(false)
       setSaving('idle')
     },
-    [dirty, file, isEditable],
+    [dirty, file, isEditable, updateDirty, updateEditorValue],
   )
 
   // Cleanup timer
@@ -215,7 +227,7 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
                   value={editorValue}
                   onMount={onMount}
                   onChange={(v) => {
-                    setEditorValue(v ?? '')
+                    updateEditorValue(v ?? '')
                     scheduleSave()
                   }}
                   options={{
