@@ -9,6 +9,7 @@
     }
   },
   "deploy": {
-    "paths": ["/app/bin"]
+    "paths": ["/app/bin"],
+    "aptPackages": ["libgraphite2-3", "libharfbuzz0b", "libicu72", "libfontconfig1"]
   }
 }
