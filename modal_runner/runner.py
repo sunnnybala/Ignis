@@ -534,18 +534,47 @@ def execute_job(
 
             _log("experiment.exec.start", traceId=traceId, jobId=jobId, projectId=projectId, data_dir=data_dir)
             t0 = time.time()
-            proc = subprocess.run(
-                ["python", "experiment.py", "--data_dir", data_dir],
+
+            # Run with real-time output streaming to Modal logs
+            proc = subprocess.Popen(
+                ["python", "-u", "experiment.py", "--data_dir", data_dir],  # -u for unbuffered output
                 cwd=str(workdir),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
             )
+
+            # Collect output while also printing to Modal logs
+            out_lines: List[str] = []
+            err_lines: List[str] = []
+
+            import threading
+
+            def read_stdout():
+                for line in proc.stdout:
+                    print(f"[experiment.stdout] {line}", end="")
+                    out_lines.append(line)
+
+            def read_stderr():
+                for line in proc.stderr:
+                    print(f"[experiment.stderr] {line}", end="")
+                    err_lines.append(line)
+
+            stdout_thread = threading.Thread(target=read_stdout)
+            stderr_thread = threading.Thread(target=read_stderr)
+            stdout_thread.start()
+            stderr_thread.start()
+
+            proc.wait()
+            stdout_thread.join()
+            stderr_thread.join()
+
             ms = int((time.time() - t0) * 1000)
             exit_code = proc.returncode
             _log("experiment.exec.end", traceId=traceId, jobId=jobId, projectId=projectId, exitCode=exit_code, ms=ms)
 
-            out = proc.stdout or ""
-            err = proc.stderr or ""
+            out = "".join(out_lines)
+            err = "".join(err_lines)
             results_text = f"Exit code: {exit_code}\n\n=== STDOUT ===\n{out}\n\n=== STDERR ===\n{err}\n"
             results_text = _truncate(results_text, MAX_LOG_CHARS)
 
