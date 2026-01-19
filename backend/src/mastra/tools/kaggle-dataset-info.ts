@@ -33,26 +33,12 @@ export const kaggleDatasetInfoTool = createTool({
   description:
     'Validates a Kaggle dataset slug and returns its file listing. ' +
     'Call this AFTER finding a dataset via web_search to verify it exists and is accessible. ' +
-    'Returns exists=false if dataset not found, accessible=false if it requires competition acceptance.',
+    'Returns exists=false if dataset not found, accessible=false if it requires competition acceptance. ' +
+    'Output: { exists: boolean, accessible: boolean, error?: string, files?: Array<{name, size}>, totalSizeBytes?: number, dataLayout?: "flat"|"has_subdirs"|"unknown" }',
   inputSchema: z.object({
     slug: z
       .string()
       .regex(/^[^/]+\/[^/]+$/, 'Must be owner/dataset format (e.g. "username/dataset-name")'),
-  }),
-  outputSchema: z.object({
-    exists: z.boolean(),
-    accessible: z.boolean(),
-    error: z.string().optional(),
-    files: z
-      .array(
-        z.object({
-          name: z.string(),
-          size: z.number(),
-        }),
-      )
-      .optional(),
-    totalSizeBytes: z.number().optional(),
-    dataLayout: z.enum(['flat', 'has_subdirs', 'unknown']).optional(),
   }),
   execute: async (input, toolContext) => {
     const { slug } = input;
