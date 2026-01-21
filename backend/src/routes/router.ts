@@ -237,6 +237,15 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
 
         // Emit simple progress updates for workflow steps.
         // This helps the UI feel responsive even when the router primarily streams routing-agent text.
+        if (type === 'workflow-execution-event-workflow-step-start') {
+          const stepName =
+            (typeof (chunk as any)?.payload?.payload?.stepName === 'string' && (chunk as any).payload.payload.stepName) ||
+            (typeof (chunk as any)?.payload?.payload?.id === 'string' && (chunk as any).payload.payload.id) ||
+            '';
+          if (stepName) {
+            sse.write({ type: 'delta', text: `\n${stepName} workflow is starting...\n` });
+          }
+        }
         if (type === 'workflow-execution-event-workflow-step-result') {
           const stepName =
             (typeof (chunk as any)?.payload?.payload?.stepName === 'string' && (chunk as any).payload.payload.stepName) ||
