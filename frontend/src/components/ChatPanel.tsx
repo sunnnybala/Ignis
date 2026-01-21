@@ -75,8 +75,11 @@ export default function ChatPanel({
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages.length])
+    const frameId = requestAnimationFrame(() => {
+      scrollToBottom()
+    })
+    return () => cancelAnimationFrame(frameId)
+  }, [messages])
 
   const send = async () => {
     const text = input.trim()
