@@ -48,6 +48,7 @@ export default function ForgeSidebar({
 
   // Expanded set of folder paths
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
+  const [recentlyUpdated, setRecentlyUpdated] = useState<Set<string>>(new Set())
   const didInitExpandRef = useRef(false)
   const didAutoSelectRef = useRef(false)
 
@@ -93,6 +94,28 @@ export default function ForgeSidebar({
     return () => document.removeEventListener('ignis:refresh-files-tree', onRefresh as EventListener)
   }, [projectId, refetch])
 
+  // Listen for file update events and trigger blinking animation
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { path?: string; projectId?: string }
+      if (detail?.projectId && detail.projectId !== projectId) return
+      if (!detail?.path) return
+
+      setRecentlyUpdated((prev) => new Set(prev).add(detail.path!))
+
+      // Clear after 3 seconds
+      setTimeout(() => {
+        setRecentlyUpdated((prev) => {
+          const next = new Set(prev)
+          next.delete(detail.path!)
+          return next
+        })
+      }, 3000)
+    }
+    document.addEventListener('ignis:file-updated', handler)
+    return () => document.removeEventListener('ignis:file-updated', handler)
+  }, [projectId])
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeaderBrand />
@@ -116,6 +139,7 @@ export default function ForgeSidebar({
                     onToggle={toggle}
                     selectedFileId={selectedFileId}
                     onSelectFile={onSelectFile}
+                    recentlyUpdatedPaths={recentlyUpdated}
                   />
                 ))}
               </SidebarMenu>
@@ -134,22 +158,26 @@ function TreeItem({
   onToggle,
   selectedFileId,
   onSelectFile,
+  recentlyUpdatedPaths,
 }: {
   node: TreeNode
   expanded: Set<string>
   onToggle: (path: string) => void
   selectedFileId?: string
   onSelectFile?: (fileId: string) => void
+  recentlyUpdatedPaths: Set<string>
 }) {
   if (node.kind === 'file') {
     const Icon = fileIcon(node.type)
     const isActive = node.fileId === selectedFileId
+    const isRecentlyUpdated = recentlyUpdatedPaths.has(node.path)
     return (
       <SidebarMenuItem>
         <SidebarMenuButton
           tooltip={node.name}
           isActive={isActive}
           onClick={() => node.fileId && onSelectFile?.(node.fileId)}
+          className={isRecentlyUpdated ? 'animate-file-updated' : ''}
         >
           <Icon className="size-4" />
           <span>{node.name}</span>
@@ -181,6 +209,7 @@ function TreeItem({
               onToggle={onToggle}
               selectedFileId={selectedFileId}
               onSelectFile={onSelectFile}
+              recentlyUpdatedPaths={recentlyUpdatedPaths}
             />
           ))}
         </ul>

@@ -214,5 +214,20 @@
   .animate-float {
     animation: float 3s ease-in-out infinite;
   }
+
+  @keyframes file-updated {
+    0%,
+    100% {
+      opacity: 1;
+      background-color: transparent;
+    }
+    50% {
+      opacity: 0.7;
+      background-color: oklch(0.488 0.243 264.376 / 0.15);
+    }
+  }
+  .animate-file-updated {
+    animation: file-updated 1s ease-in-out 3;
+  }
 }
 

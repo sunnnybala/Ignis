@@ -234,7 +234,7 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
       for await (const chunk of iterable) {
         const type = String((chunk as any)?.type ?? '');
         if (!type) continue;
-
+        logger.debug('router.network.chunk', { traceId, type, chunk });
         // Emit simple progress updates for workflow steps.
         // This helps the UI feel responsive even when the router primarily streams routing-agent text.
         if (type === 'workflow-execution-event-workflow-step-start') {
@@ -273,6 +273,28 @@ routerRouter.post('/:projectId/chat', async (req, res) => {
           if (typeof result === 'string') finalText = result;
           if (result && typeof result?.text === 'string') finalText = result.text;
           logger.debug('router.network.step_finish', { traceId, hasResult: !!result });
+        }
+
+        // Detect tool results and emit file_update for write_file operations
+        if (type === 'tool-result' || type.includes('tool-result')) {
+          const payload = (chunk as any)?.payload ?? chunk;
+          const toolName = payload?.toolName ?? '';
+
+          // Debug log to confirm tool results are being received
+          logger.debug('router.tool_result', { traceId, toolName, type });
+
+          if (toolName === 'write_file') {
+            const result = payload?.result;
+            if (result?.ok && result?.path) {
+              logger.debug('router.file_update.emit', { traceId, path: result.path });
+              sse.write({
+                type: 'file_update',
+                path: result.path,
+                op: 'replace',
+                content: '',
+              });
+            }
+          }
         }
       }
     }

@@ -125,24 +125,27 @@ export default function ForgeMain({ selectedFileId, projectId }: { selectedFileI
   // Apply server-driven file updates when safe (not dirty and editable)
   const handleFileUpdate = useCallback(
     (ev: { path: string; op: 'append' | 'replace'; content: string }) => {
+      // Dispatch event for sidebar highlighting (always, regardless of whether this file is open)
+      document.dispatchEvent(
+        new CustomEvent('ignis:file-updated', { detail: { path: ev.path, projectId } })
+      )
+
       if (!file) return
       if (file.path !== ev.path) return
       if (!isEditable) return
-      if (dirty) return
-      // prevent queued save from firing
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = undefined
+
+      // If not dirty, refetch the file from server instead of using event content
+      // (content may be empty or truncated in SSE)
+      if (!dirty) {
+        // prevent queued save from firing
+        if (saveTimerRef.current) {
+          window.clearTimeout(saveTimerRef.current)
+          saveTimerRef.current = undefined
+        }
+        qc.invalidateQueries({ queryKey: ['file', selectedFileId] })
       }
-      if (ev.op === 'replace') {
-        updateEditorValue(ev.content)
-      } else {
-        updateEditorValue((editorValueRef.current ?? '') + ev.content)
-      }
-      updateDirty(false)
-      setSaving('idle')
     },
-    [dirty, file, isEditable, updateDirty, updateEditorValue],
+    [dirty, file, isEditable, projectId, qc, selectedFileId],
   )
 
   // Cleanup timer
