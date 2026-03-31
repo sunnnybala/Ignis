@@ -1,0 +1,28 @@
+in addition to a landing cum login page
+There need to be 2 pages,
+1) home page:
+All projects listing, profile, usage, subscription, about, log out etc
+2) forge page:
+The main canvas. Check the design in the page. 
+
+
+Functionality:
+1) seemless onboarding and experience 
+2) paper downloading 
+3) all features as discussed about Ignis agent. 
+there are three main phases in Ignis Agent
+1) Idea refinement and novelty checker
+2) experimentation 
+3) paper generation 
+each project will have a main folder associated with it. this folder will further have many sub folder like 
+1) lit review, which will have a txt file of 10 relvenat papers with abstract, a txt file which will be a 4 page review paper of all that is done related to the idea, 
+2) Design, will have the idea design and implementation plan txt file. 
+3) Experimentation: will have the code file
+4) results: will have the txt file with results and and images or plots out of the code file
+5) final paper: will have the latex and pdf file.   
+
+
+Ignis agent needs to be human in the Loop. after every sub phase it needs to show the reults to users, ask it further clarificatiosn etc and either refine the phase more or move to next phase only based on user instructions.
+
+DB:
+1) subscription credits, general user details, user project details, project files details.

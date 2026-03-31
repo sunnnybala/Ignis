@@ -1,0 +1,8 @@
+Hello. Welcome to this demo of Ignis, an AI assistant that efficiently guides researchers from an initial idea to a fully developed research paper. Let's take it for a spin with some vision transformer research.
+Once you submit an idea, Ignis kicks things off by refining it to ensure clarity and focus.
+Next, Ignis evaluates the idea's novelty by conducting a comprehensive literature review. It then progresses to crafting an implementation plan, assists in coding, runs the experiments when you’re set, and neatly stores the results ready for paper creation.
+With these results in hand, Ignis generates a research paper that is ready for publication. Additionally, it provides a publication probability and a list of suggested journals. You have the option to request modifications based on your feedback.
+Ignis also makes sure that the paper adheres to the required format and template of the chosen journal, while offering an acceptance probability for that specific journal.
+
+
+
