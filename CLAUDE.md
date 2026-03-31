@@ -74,7 +74,7 @@ Project files stored hierarchically with `(projectId, path)` uniqueness. Jobs tr
 
 ## API Patterns
 
-- **SSE streaming**: `/router/:projectId/step` streams agent responses
+- **SSE streaming**: `/router/:projectId/chat` streams agent responses
 - **Job callbacks**: Modal calls `/jobs/:jobId/complete` (public, job-token auth)
 - **Authorization**: All routes filtered by userId from JWT; ownership checked in `authz/ownership.ts`
 
@@ -87,7 +87,7 @@ Project files stored hierarchically with `(projectId, path)` uniqueness. Jobs tr
 
 ## Environment Variables
 
-Backend requires: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_PRIVATE_KEY`, `CORS_ORIGIN`, `MODAL_RUNNER_URL`, `PUBLIC_BASE_URL`, `GOOGLE_VERTEX_PROJECT`, `GOOGLE_VERTEX_LOCATION`, `GOOGLE_APPLICATION_CREDENTIALS`
+Backend requires: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_STORAGE_BUCKET`, `SUPABASE_JWKS_URL`, `SUPABASE_JWT_ISSUER`, `CORS_ORIGIN`, `MODAL_RUNNER_URL`, `PUBLIC_BASE_URL`, `GOOGLE_VERTEX_PROJECT`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `EXA_API_KEY`, `KAGGLE_USERNAME`, `KAGGLE_KEY`
 
 Frontend requires: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
@@ -130,4 +130,11 @@ npm run test:watch   # Watch mode
 - Extract route handlers via `router.stack` for direct testing
 
 **Coverage**: Utils, middleware, authorization, route handlers, and services (197 tests)
+
+## Documentation
+
+- [README.md](README.md) - Project overview, setup, API reference
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System design, data flow, deployment
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Dev setup, testing, code conventions
+- [docs/agent-architecture-flowchart.md](docs/agent-architecture-flowchart.md) - Mermaid diagrams of agent workflows
 
